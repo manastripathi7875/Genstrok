@@ -43,9 +43,25 @@ export default function Home() {
           boxShadow: "0 6px 18px rgba(15,23,42,0.08)",
         }}
       >
-        <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>
-          Protera Marketplace
-        </h1>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <h1 style={{ fontSize: 24, fontWeight: 700 }}>
+            Protera Marketplace
+          </h1>
+          <a
+            href="/admin"
+            style={{
+              padding: "6px 12px",
+              background: "#2563eb",
+              color: "white",
+              borderRadius: 6,
+              textDecoration: "none",
+              fontSize: 13,
+              fontWeight: 500,
+            }}
+          >
+            Admin
+          </a>
+        </div>
         <p style={{ fontSize: 14, color: "#4b5563", marginBottom: 12 }}>
           Ye page ab Supabase database se real items dikhayega.
         </p>
