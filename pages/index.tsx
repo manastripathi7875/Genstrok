@@ -7,7 +7,7 @@ export default function Home() {
 
   async function fetchItems() {
     const { data, error } = await supabase
-      .from("items")
+      .from("Items")
       .select("*")
       .order("created_at", { ascending: false })
       .limit(20);
