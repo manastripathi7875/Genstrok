@@ -1,108 +1,104 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 
-interface Item {
-  id: number;
+type Item = {
+  id: string;
   title: string;
   price: number;
-  stock: number;
   cover_url: string;
-  created_at?: string;
-}
+  stock: number;
+};
 
 export default function Admin() {
+  // auth state
+  const [user, setUser] = useState<any>(null);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authMsg, setAuthMsg] = useState("");
+
+  // item form state
+  const [title, setTitle] = useState("");
+  const [price, setPrice] = useState("");
+  const [coverUrl, setCoverUrl] = useState("");
+  const [stock, setStock] = useState("");
+
+  // items list
   const [items, setItems] = useState<Item[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [editingItem, setEditingItem] = useState<Item | null>(null);
-  const [formData, setFormData] = useState({
-    title: "",
-    price: "",
-    stock: "",
-    cover_url: "",
-  });
+  const [msg, setMsg] = useState("");
+
+  // on page load, check if already logged in
+  useEffect(() => {
+    async function checkUser() {
+      const { data } = await supabase.auth.getUser();
+      if (data.user) {
+        setUser(data.user);
+        fetchItems();
+      }
+    }
+    checkUser();
+  }, []);
+
+  async function handleLogin(e: any) {
+    e.preventDefault();
+    setAuthMsg("Logging in...");
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: authEmail,
+      password: authPassword,
+    });
+
+    if (error) {
+      setAuthMsg("❌ " + error.message);
+    } else {
+      setAuthMsg("✅ Logged in");
+      setUser(data.user);
+      fetchItems();
+    }
+  }
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    setUser(null);
+    setAuthMsg("Logged out");
+    setItems([]);
+  }
 
   async function fetchItems() {
-    setLoading(true);
     const { data, error } = await supabase
-      .from("Items")
+      .from("items")
       .select("*")
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.log("Error:", error);
+      console.log(error);
+      setMsg("❌ Error loading items");
     } else {
-      setItems(data || []);
+      setItems((data || []) as Item[]);
+      setMsg("");
     }
-    setLoading(false);
   }
 
-  useEffect(() => {
-    fetchItems();
-  }, []);
-
-  function resetForm() {
-    setFormData({ title: "", price: "", stock: "", cover_url: "" });
-    setEditingItem(null);
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
+  async function addItem(e: any) {
     e.preventDefault();
-    setSaving(true);
+    setMsg("Adding item...");
 
-    const itemData = {
-      title: formData.title,
-      price: parseFloat(formData.price),
-      stock: parseInt(formData.stock),
-      cover_url: formData.cover_url,
-    };
-
-    if (editingItem) {
-      const { error } = await supabase
-        .from("Items")
-        .update(itemData)
-        .eq("id", editingItem.id);
-
-      if (error) {
-        alert("Error updating item: " + error.message);
-      } else {
-        alert("Item updated successfully!");
-        resetForm();
-        fetchItems();
-      }
-    } else {
-      const { error } = await supabase.from("Items").insert([itemData]);
-
-      if (error) {
-        alert("Error adding item: " + error.message);
-      } else {
-        alert("Item added successfully!");
-        resetForm();
-        fetchItems();
-      }
-    }
-    setSaving(false);
-  }
-
-  function handleEdit(item: Item) {
-    setEditingItem(item);
-    setFormData({
-      title: item.title,
-      price: item.price.toString(),
-      stock: item.stock.toString(),
-      cover_url: item.cover_url || "",
-    });
-  }
-
-  async function handleDelete(id: number) {
-    if (!confirm("Are you sure you want to delete this item?")) return;
-
-    const { error } = await supabase.from("Items").delete().eq("id", id);
+    const { error } = await supabase.from("items").insert([
+      {
+        title,
+        price: Number(price),
+        cover_url: coverUrl,
+        stock: Number(stock),
+      },
+    ]);
 
     if (error) {
-      alert("Error deleting item: " + error.message);
+      setMsg("❌ Error: " + error.message);
     } else {
-      alert("Item deleted successfully!");
+      setMsg("✅ Item added successfully!");
+      setTitle("");
+      setPrice("");
+      setCoverUrl("");
+      setStock("");
       fetchItems();
     }
   }
@@ -118,301 +114,304 @@ export default function Admin() {
     >
       <div
         style={{
-          maxWidth: 800,
+          maxWidth: 520,
           margin: "0 auto",
+          background: "white",
+          borderRadius: 12,
+          padding: 16,
+          boxShadow: "0 6px 18px rgba(15,23,42,0.08)",
         }}
       >
-        <div
+        <header
           style={{
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            marginBottom: 16,
+            marginBottom: 12,
           }}
         >
-          <h1 style={{ fontSize: 24, fontWeight: 700 }}>Admin Panel</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 700 }}>Admin Panel</h1>
+
           <a
             href="/"
             style={{
-              padding: "8px 16px",
-              background: "#6b7280",
-              color: "white",
-              borderRadius: 6,
+              padding: "6px 10px",
+              borderRadius: 8,
+              border: "1px solid #e5e7eb",
+              fontSize: 12,
               textDecoration: "none",
-              fontSize: 14,
             }}
           >
             View Store
           </a>
-        </div>
+        </header>
 
-        <div
-          style={{
-            background: "white",
-            borderRadius: 12,
-            padding: 20,
-            marginBottom: 20,
-            boxShadow: "0 6px 18px rgba(15,23,42,0.08)",
-          }}
-        >
-          <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16 }}>
-            {editingItem ? "Edit Item" : "Add New Item"}
-          </h2>
-          <form onSubmit={handleSubmit}>
-            <div style={{ marginBottom: 12 }}>
-              <label
-                style={{
-                  display: "block",
-                  fontSize: 14,
-                  fontWeight: 500,
-                  marginBottom: 4,
-                }}
-              >
-                Title
-              </label>
+        {/* If not logged in: show login form */}
+        {!user && (
+          <div
+            style={{
+              padding: 12,
+              borderRadius: 8,
+              background: "#f9fafb",
+              marginBottom: 12,
+            }}
+          >
+            <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>
+              Login to admin
+            </h2>
+            <form onSubmit={handleLogin}>
               <input
-                type="text"
-                value={formData.title}
-                onChange={(e) =>
-                  setFormData({ ...formData, title: e.target.value })
-                }
+                value={authEmail}
+                onChange={(e) => setAuthEmail(e.target.value)}
+                placeholder="Admin email"
+                style={{
+                  width: "100%",
+                  padding: 8,
+                  borderRadius: 6,
+                  marginBottom: 8,
+                  border: "1px solid #ddd",
+                }}
+                type="email"
                 required
-                style={{
-                  width: "100%",
-                  padding: "10px 12px",
-                  border: "1px solid #d1d5db",
-                  borderRadius: 6,
-                  fontSize: 14,
-                  boxSizing: "border-box",
-                }}
               />
-            </div>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 12,
-                marginBottom: 12,
-              }}
-            >
-              <div>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: 14,
-                    fontWeight: 500,
-                    marginBottom: 4,
-                  }}
-                >
-                  Price (₹)
-                </label>
-                <input
-                  type="number"
-                  value={formData.price}
-                  onChange={(e) =>
-                    setFormData({ ...formData, price: e.target.value })
-                  }
-                  required
-                  min="0"
-                  step="0.01"
-                  style={{
-                    width: "100%",
-                    padding: "10px 12px",
-                    border: "1px solid #d1d5db",
-                    borderRadius: 6,
-                    fontSize: 14,
-                    boxSizing: "border-box",
-                  }}
-                />
-              </div>
-              <div>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: 14,
-                    fontWeight: 500,
-                    marginBottom: 4,
-                  }}
-                >
-                  Stock
-                </label>
-                <input
-                  type="number"
-                  value={formData.stock}
-                  onChange={(e) =>
-                    setFormData({ ...formData, stock: e.target.value })
-                  }
-                  required
-                  min="0"
-                  style={{
-                    width: "100%",
-                    padding: "10px 12px",
-                    border: "1px solid #d1d5db",
-                    borderRadius: 6,
-                    fontSize: 14,
-                    boxSizing: "border-box",
-                  }}
-                />
-              </div>
-            </div>
-            <div style={{ marginBottom: 16 }}>
-              <label
-                style={{
-                  display: "block",
-                  fontSize: 14,
-                  fontWeight: 500,
-                  marginBottom: 4,
-                }}
-              >
-                Image URL
-              </label>
               <input
-                type="url"
-                value={formData.cover_url}
-                onChange={(e) =>
-                  setFormData({ ...formData, cover_url: e.target.value })
-                }
-                placeholder="https://example.com/image.jpg"
+                value={authPassword}
+                onChange={(e) => setAuthPassword(e.target.value)}
+                placeholder="Password"
                 style={{
                   width: "100%",
-                  padding: "10px 12px",
-                  border: "1px solid #d1d5db",
+                  padding: 8,
                   borderRadius: 6,
-                  fontSize: 14,
-                  boxSizing: "border-box",
+                  marginBottom: 8,
+                  border: "1px solid #ddd",
                 }}
+                type="password"
+                required
               />
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
               <button
                 type="submit"
-                disabled={saving}
                 style={{
-                  padding: "10px 20px",
-                  background: "#2563eb",
+                  width: "100%",
+                  padding: 10,
+                  background: "black",
                   color: "white",
-                  border: "none",
-                  borderRadius: 6,
-                  fontSize: 14,
-                  fontWeight: 500,
-                  cursor: saving ? "not-allowed" : "pointer",
-                  opacity: saving ? 0.7 : 1,
+                  borderRadius: 8,
+                  fontWeight: 600,
                 }}
               >
-                {saving
-                  ? "Saving..."
-                  : editingItem
-                  ? "Update Item"
-                  : "Add Item"}
+                Login
               </button>
-              {editingItem && (
-                <button
-                  type="button"
-                  onClick={resetForm}
-                  style={{
-                    padding: "10px 20px",
-                    background: "#e5e7eb",
-                    color: "#374151",
-                    border: "none",
-                    borderRadius: 6,
-                    fontSize: 14,
-                    fontWeight: 500,
-                    cursor: "pointer",
-                  }}
-                >
-                  Cancel
-                </button>
-              )}
-            </div>
-          </form>
-        </div>
-
-        <div
-          style={{
-            background: "white",
-            borderRadius: 12,
-            padding: 20,
-            boxShadow: "0 6px 18px rgba(15,23,42,0.08)",
-          }}
-        >
-          <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16 }}>
-            All Items ({items.length})
-          </h2>
-
-          {loading && <p>Loading items...</p>}
-
-          {!loading && items.length === 0 && (
-            <p style={{ color: "#6b7280" }}>No items yet. Add your first item above!</p>
-          )}
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {items.map((item) => (
-              <div
-                key={item.id}
+            </form>
+            {authMsg && (
+              <p
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  padding: 12,
-                  border: "1px solid #e5e7eb",
+                  marginTop: 8,
+                  fontSize: 12,
+                }}
+              >
+                {authMsg}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* If logged in: show admin tools */}
+        {user && (
+          <>
+            <div
+              style={{
+                marginBottom: 12,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                fontSize: 12,
+              }}
+            >
+              <span>Logged in as: {user.email}</span>
+              <button
+                onClick={handleLogout}
+                style={{
+                  padding: "4px 8px",
                   borderRadius: 8,
+                  border: "1px solid #e5e7eb",
                   background: "#f9fafb",
                 }}
               >
-                {item.cover_url && (
-                  <img
-                    src={item.cover_url}
-                    alt={item.title}
+                Logout
+              </button>
+            </div>
+
+            <section
+              style={{
+                marginBottom: 16,
+                padding: 12,
+                borderRadius: 8,
+                background: "#f9fafb",
+              }}
+            >
+              <h2
+                style={{
+                  fontSize: 16,
+                  fontWeight: 600,
+                  marginBottom: 8,
+                }}
+              >
+                Add New Item
+              </h2>
+
+              <form onSubmit={addItem}>
+                <label>Title</label>
+                <input
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: 8,
+                    borderRadius: 6,
+                    marginBottom: 8,
+                    border: "1px solid #ddd",
+                  }}
+                  required
+                />
+
+                <label>Price</label>
+                <input
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  type="number"
+                  style={{
+                    width: "100%",
+                    padding: 8,
+                    borderRadius: 6,
+                    marginBottom: 8,
+                    border: "1px solid #ddd",
+                  }}
+                  required
+                />
+
+                <label>Image URL</label>
+                <input
+                  value={coverUrl}
+                  onChange={(e) => setCoverUrl(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: 8,
+                    borderRadius: 6,
+                    marginBottom: 8,
+                    border: "1px solid #ddd",
+                  }}
+                  required
+                />
+
+                <label>Stock</label>
+                <input
+                  value={stock}
+                  onChange={(e) => setStock(e.target.value)}
+                  type="number"
+                  style={{
+                    width: "100%",
+                    padding: 8,
+                    borderRadius: 6,
+                    marginBottom: 12,
+                    border: "1px solid #ddd",
+                  }}
+                  required
+                />
+
+                <button
+                  type="submit"
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    background: "black",
+                    color: "white",
+                    borderRadius: 8,
+                    fontWeight: 600,
+                  }}
+                >
+                  Add Item
+                </button>
+              </form>
+
+              {msg && (
+                <p
+                  style={{
+                    marginTop: 8,
+                    fontSize: 12,
+                  }}
+                >
+                  {msg}
+                </p>
+              )}
+            </section>
+
+            <section>
+              <h2
+                style={{
+                  fontSize: 16,
+                  fontWeight: 600,
+                  marginBottom: 8,
+                }}
+              >
+                All Items ({items.length})
+              </h2>
+
+              {items.length === 0 && (
+                <p style={{ fontSize: 13 }}>No items yet.</p>
+              )}
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {items.map((item) => (
+                  <div
+                    key={item.id}
                     style={{
-                      width: 60,
-                      height: 60,
-                      objectFit: "cover",
-                      borderRadius: 6,
-                    }}
-                  />
-                )}
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                    {item.title}
-                  </div>
-                  <div style={{ fontSize: 14, color: "#6b7280" }}>
-                    ₹{item.price} | Stock: {item.stock}
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button
-                    onClick={() => handleEdit(item)}
-                    style={{
-                      padding: "6px 12px",
-                      background: "#fbbf24",
-                      color: "#1f2937",
-                      border: "none",
-                      borderRadius: 4,
-                      fontSize: 13,
-                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      borderRadius: 8,
+                      border: "1px solid #e5e7eb",
+                      padding: 8,
+                      background: "#f9fafb",
                     }}
                   >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => handleDelete(item.id)}
-                    style={{
-                      padding: "6px 12px",
-                      background: "#ef4444",
-                      color: "white",
-                      border: "none",
-                      borderRadius: 4,
-                      fontSize: 13,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Delete
-                  </button>
-                </div>
+                    <div
+                      style={{
+                        width: 60,
+                        height: 60,
+                        borderRadius: 8,
+                        overflow: "hidden",
+                        background: "#e5e7eb",
+                      }}
+                    >
+                      <img
+                        src={item.cover_url}
+                        alt={item.title}
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                        }}
+                      />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {item.title}
+                      </div>
+                      <div style={{ fontSize: 12, color: "#4b5563" }}>
+                        ₹{item.price} | Stock: {item.stock}
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
+            </section>
+          </>
+        )}
       </div>
     </main>
   );
