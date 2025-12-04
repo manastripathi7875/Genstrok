@@ -1,417 +1,275 @@
 import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
 import { supabase } from "../lib/supabaseClient";
+import { getSession, signOut } from "../lib/auth";
+import { Button, Input, Card, CardContent, Loading, EmptyState } from "../components/UI";
 
-type Item = {
-  id: string;
+interface Item {
+  id: number;
   title: string;
   price: number;
-  cover_url: string;
   stock: number;
-};
+  cover_url: string;
+  created_at?: string;
+}
 
 export default function Admin() {
-  // auth state
-  const [user, setUser] = useState<any>(null);
-  const [authEmail, setAuthEmail] = useState("");
-  const [authPassword, setAuthPassword] = useState("");
-  const [authMsg, setAuthMsg] = useState("");
-
-  // item form state
-  const [title, setTitle] = useState("");
-  const [price, setPrice] = useState("");
-  const [coverUrl, setCoverUrl] = useState("");
-  const [stock, setStock] = useState("");
-
-  // items list
+  const router = useRouter();
   const [items, setItems] = useState<Item[]>([]);
-  const [msg, setMsg] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [editingItem, setEditingItem] = useState<Item | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [formData, setFormData] = useState({
+    title: "",
+    price: "",
+    stock: "",
+    cover_url: "",
+  });
 
-  // on page load, check if already logged in
   useEffect(() => {
-    async function checkUser() {
-      const { data } = await supabase.auth.getUser();
-      if (data.user) {
-        setUser(data.user);
-        fetchItems();
-      }
-    }
-    checkUser();
+    checkAuth();
   }, []);
 
-  async function handleLogin(e: any) {
-    e.preventDefault();
-    setAuthMsg("Logging in...");
-
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: authEmail,
-      password: authPassword,
-    });
-
-    if (error) {
-      setAuthMsg("❌ " + error.message);
-    } else {
-      setAuthMsg("✅ Logged in");
-      setUser(data.user);
+  async function checkAuth() {
+    try {
+      const session = await getSession();
+      if (!session) {
+        router.push("/login");
+        return;
+      }
+      setIsAuthenticated(true);
       fetchItems();
+    } catch (err) {
+      router.push("/login");
     }
-  }
-
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    setUser(null);
-    setAuthMsg("Logged out");
-    setItems([]);
   }
 
   async function fetchItems() {
+    setLoading(true);
     const { data, error } = await supabase
-      .from("items")
+      .from("Items")
       .select("*")
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.log(error);
-      setMsg("❌ Error loading items");
+      console.log("Error:", error);
     } else {
-      setItems((data || []) as Item[]);
-      setMsg("");
+      setItems(data || []);
     }
+    setLoading(false);
   }
 
-  async function addItem(e: any) {
-    e.preventDefault();
-    setMsg("Adding item...");
+  async function handleLogout() {
+    await signOut();
+    router.push("/login");
+  }
 
-    const { error } = await supabase.from("items").insert([
-      {
-        title,
-        price: Number(price),
-        cover_url: coverUrl,
-        stock: Number(stock),
-      },
-    ]);
+  function resetForm() {
+    setFormData({ title: "", price: "", stock: "", cover_url: "" });
+    setEditingItem(null);
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+
+    const itemData = {
+      title: formData.title,
+      price: parseFloat(formData.price),
+      stock: parseInt(formData.stock),
+      cover_url: formData.cover_url,
+    };
+
+    if (editingItem) {
+      const { error } = await supabase
+        .from("Items")
+        .update(itemData)
+        .eq("id", editingItem.id);
+
+      if (error) {
+        alert("Error updating item: " + error.message);
+      } else {
+        resetForm();
+        fetchItems();
+      }
+    } else {
+      const { error } = await supabase.from("Items").insert([itemData]);
+
+      if (error) {
+        alert("Error adding item: " + error.message);
+      } else {
+        resetForm();
+        fetchItems();
+      }
+    }
+    setSaving(false);
+  }
+
+  function handleEdit(item: Item) {
+    setEditingItem(item);
+    setFormData({
+      title: item.title,
+      price: item.price.toString(),
+      stock: item.stock.toString(),
+      cover_url: item.cover_url || "",
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function handleDelete(id: number) {
+    if (!confirm("Are you sure you want to delete this item?")) return;
+
+    const { error } = await supabase.from("Items").delete().eq("id", id);
 
     if (error) {
-      setMsg("❌ Error: " + error.message);
+      alert("Error deleting item: " + error.message);
     } else {
-      setMsg("✅ Item added successfully!");
-      setTitle("");
-      setPrice("");
-      setCoverUrl("");
-      setStock("");
       fetchItems();
     }
   }
 
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <Loading size="lg" text="Checking authentication..." />
+      </div>
+    );
+  }
+
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        padding: 16,
-        fontFamily: "system-ui, sans-serif",
-        background: "#f3f4f6",
-      }}
-    >
-      <div
-        style={{
-          maxWidth: 520,
-          margin: "0 auto",
-          background: "white",
-          borderRadius: 12,
-          padding: 16,
-          boxShadow: "0 6px 18px rgba(15,23,42,0.08)",
-        }}
-      >
-        <header
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 12,
-          }}
-        >
-          <h1 style={{ fontSize: 22, fontWeight: 700 }}>Admin Panel</h1>
-
-          <a
-            href="/"
-            style={{
-              padding: "6px 10px",
-              borderRadius: 8,
-              border: "1px solid #e5e7eb",
-              fontSize: 12,
-              textDecoration: "none",
-            }}
-          >
-            View Store
-          </a>
-        </header>
-
-        {/* If not logged in: show login form */}
-        {!user && (
-          <div
-            style={{
-              padding: 12,
-              borderRadius: 8,
-              background: "#f9fafb",
-              marginBottom: 12,
-            }}
-          >
-            <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>
-              Login to admin
-            </h2>
-            <form onSubmit={handleLogin}>
-              <input
-                value={authEmail}
-                onChange={(e) => setAuthEmail(e.target.value)}
-                placeholder="Admin email"
-                style={{
-                  width: "100%",
-                  padding: 8,
-                  borderRadius: 6,
-                  marginBottom: 8,
-                  border: "1px solid #ddd",
-                }}
-                type="email"
-                required
-              />
-              <input
-                value={authPassword}
-                onChange={(e) => setAuthPassword(e.target.value)}
-                placeholder="Password"
-                style={{
-                  width: "100%",
-                  padding: 8,
-                  borderRadius: 6,
-                  marginBottom: 8,
-                  border: "1px solid #ddd",
-                }}
-                type="password"
-                required
-              />
-              <button
-                type="submit"
-                style={{
-                  width: "100%",
-                  padding: 10,
-                  background: "black",
-                  color: "white",
-                  borderRadius: 8,
-                  fontWeight: 600,
-                }}
-              >
-                Login
-              </button>
-            </form>
-            {authMsg && (
-              <p
-                style={{
-                  marginTop: 8,
-                  fontSize: 12,
-                }}
-              >
-                {authMsg}
-              </p>
-            )}
+    <main className="min-h-screen bg-gray-100 py-6 px-4">
+      <div className="max-w-4xl mx-auto">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-bold text-protera-700">Admin Panel</h1>
+          <div className="flex gap-2">
+            <a
+              href="/"
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+            >
+              View Store
+            </a>
+            <Button variant="secondary" onClick={handleLogout}>
+              Logout
+            </Button>
           </div>
-        )}
+        </div>
 
-        {/* If logged in: show admin tools */}
-        {user && (
-          <>
-            <div
-              style={{
-                marginBottom: 12,
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                fontSize: 12,
-              }}
-            >
-              <span>Logged in as: {user.email}</span>
-              <button
-                onClick={handleLogout}
-                style={{
-                  padding: "4px 8px",
-                  borderRadius: 8,
-                  border: "1px solid #e5e7eb",
-                  background: "#f9fafb",
-                }}
-              >
-                Logout
-              </button>
-            </div>
-
-            <section
-              style={{
-                marginBottom: 16,
-                padding: 12,
-                borderRadius: 8,
-                background: "#f9fafb",
-              }}
-            >
-              <h2
-                style={{
-                  fontSize: 16,
-                  fontWeight: 600,
-                  marginBottom: 8,
-                }}
-              >
-                Add New Item
-              </h2>
-
-              <form onSubmit={addItem}>
-                <label>Title</label>
-                <input
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: 8,
-                    borderRadius: 6,
-                    marginBottom: 8,
-                    border: "1px solid #ddd",
-                  }}
-                  required
-                />
-
-                <label>Price</label>
-                <input
-                  value={price}
-                  onChange={(e) => setPrice(e.target.value)}
+        <Card className="mb-6">
+          <CardContent>
+            <h2 className="text-lg font-semibold mb-4">
+              {editingItem ? "Edit Item" : "Add New Item"}
+            </h2>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <Input
+                label="Title"
+                value={formData.title}
+                onChange={(e) =>
+                  setFormData({ ...formData, title: e.target.value })
+                }
+                required
+              />
+              <div className="grid grid-cols-2 gap-4">
+                <Input
                   type="number"
-                  style={{
-                    width: "100%",
-                    padding: 8,
-                    borderRadius: 6,
-                    marginBottom: 8,
-                    border: "1px solid #ddd",
-                  }}
+                  label="Price (₹)"
+                  value={formData.price}
+                  onChange={(e) =>
+                    setFormData({ ...formData, price: e.target.value })
+                  }
                   required
+                  min="0"
+                  step="0.01"
                 />
-
-                <label>Image URL</label>
-                <input
-                  value={coverUrl}
-                  onChange={(e) => setCoverUrl(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: 8,
-                    borderRadius: 6,
-                    marginBottom: 8,
-                    border: "1px solid #ddd",
-                  }}
-                  required
-                />
-
-                <label>Stock</label>
-                <input
-                  value={stock}
-                  onChange={(e) => setStock(e.target.value)}
+                <Input
                   type="number"
-                  style={{
-                    width: "100%",
-                    padding: 8,
-                    borderRadius: 6,
-                    marginBottom: 12,
-                    border: "1px solid #ddd",
-                  }}
+                  label="Stock"
+                  value={formData.stock}
+                  onChange={(e) =>
+                    setFormData({ ...formData, stock: e.target.value })
+                  }
                   required
+                  min="0"
                 />
+              </div>
+              <Input
+                type="url"
+                label="Image URL"
+                value={formData.cover_url}
+                onChange={(e) =>
+                  setFormData({ ...formData, cover_url: e.target.value })
+                }
+                placeholder="https://example.com/image.jpg"
+              />
+              <div className="flex gap-2">
+                <Button type="submit" loading={saving}>
+                  {editingItem ? "Update Item" : "Add Item"}
+                </Button>
+                {editingItem && (
+                  <Button type="button" variant="secondary" onClick={resetForm}>
+                    Cancel
+                  </Button>
+                )}
+              </div>
+            </form>
+          </CardContent>
+        </Card>
 
-                <button
-                  type="submit"
-                  style={{
-                    width: "100%",
-                    padding: 10,
-                    background: "black",
-                    color: "white",
-                    borderRadius: 8,
-                    fontWeight: 600,
-                  }}
-                >
-                  Add Item
-                </button>
-              </form>
+        <Card>
+          <CardContent>
+            <h2 className="text-lg font-semibold mb-4">
+              All Items ({items.length})
+            </h2>
 
-              {msg && (
-                <p
-                  style={{
-                    marginTop: 8,
-                    fontSize: 12,
-                  }}
-                >
-                  {msg}
-                </p>
-              )}
-            </section>
-
-            <section>
-              <h2
-                style={{
-                  fontSize: 16,
-                  fontWeight: 600,
-                  marginBottom: 8,
-                }}
-              >
-                All Items ({items.length})
-              </h2>
-
-              {items.length === 0 && (
-                <p style={{ fontSize: 13 }}>No items yet.</p>
-              )}
-
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {loading ? (
+              <Loading text="Loading items..." />
+            ) : items.length === 0 ? (
+              <EmptyState
+                title="No items yet"
+                description="Add your first item using the form above"
+              />
+            ) : (
+              <div className="space-y-3">
                 {items.map((item) => (
                   <div
                     key={item.id}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      borderRadius: 8,
-                      border: "1px solid #e5e7eb",
-                      padding: 8,
-                      background: "#f9fafb",
-                    }}
+                    className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg"
                   >
-                    <div
-                      style={{
-                        width: 60,
-                        height: 60,
-                        borderRadius: 8,
-                        overflow: "hidden",
-                        background: "#e5e7eb",
-                      }}
-                    >
+                    {item.cover_url && (
                       <img
                         src={item.cover_url}
                         alt={item.title}
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                        }}
+                        className="w-16 h-16 object-cover rounded-lg"
                       />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div
-                        style={{
-                          fontSize: 13,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {item.title}
-                      </div>
-                      <div style={{ fontSize: 12, color: "#4b5563" }}>
+                    )}
+                    <div className="flex-1">
+                      <div className="font-semibold">{item.title}</div>
+                      <div className="text-sm text-gray-500">
                         ₹{item.price} | Stock: {item.stock}
                       </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="secondary"
+                        onClick={() => handleEdit(item)}
+                        className="text-sm px-3 py-1"
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        variant="danger"
+                        onClick={() => handleDelete(item.id)}
+                        className="text-sm px-3 py-1"
+                      >
+                        Delete
+                      </Button>
                     </div>
                   </div>
                 ))}
               </div>
-            </section>
-          </>
-        )}
+            )}
+          </CardContent>
+        </Card>
       </div>
     </main>
   );

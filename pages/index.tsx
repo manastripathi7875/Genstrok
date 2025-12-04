@@ -1,20 +1,24 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { Button, Card, CardImage, CardContent, Loading, EmptyState } from "../components/UI";
 
-type Item = {
-  id: string;
+interface Item {
+  id: number;
   title: string;
   price: number;
-  cover_url: string;
   stock: number;
-};
+  cover_url: string;
+}
 
 export default function Home() {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
-  const [errorText, setErrorText] = useState("");
-  const [buyerName, setBuyerName] = useState("");
-  const [actionMsg, setActionMsg] = useState("");
+  const [claimingId, setClaimingId] = useState<number | null>(null);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    fetchItems();
+  }, []);
 
   async function fetchItems() {
     setLoading(true);
@@ -24,223 +28,118 @@ export default function Home() {
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.log(error);
-      setErrorText(error.message);
+      console.log("Error:", error);
     } else {
-      setItems((data || []) as Item[]);
-      setErrorText("");
+      setItems(data || []);
     }
     setLoading(false);
   }
 
-  useEffect(() => {
-    fetchItems();
-  }, []);
-
   async function handleClaim(item: Item) {
-    if (!buyerName.trim()) {
-      setActionMsg("Pehle upar apna naam / email likho.");
-      return;
-    }
-    if (!item.stock || item.stock <= 0) {
-      setActionMsg("Ye item out of stock hai.");
-      return;
-    }
+    if (item.stock <= 0) return;
+    
+    setClaimingId(item.id);
+    setMessage("");
 
-    setActionMsg("Processing claim...");
-
-    const { error: ownError } = await supabase.from("ownership").insert([
-      {
-        item_id: item.id,
-        buyer_name: buyerName,
-      },
-    ]);
-
-    if (ownError) {
-      console.log(ownError);
-      setActionMsg("Error (ownership): " + ownError.message);
-      return;
-    }
-
-    const { error: updError } = await supabase
+    const { error } = await supabase
       .from("Items")
-      .update({ stock: (item.stock || 0) - 1 })
+      .update({ stock: item.stock - 1 })
       .eq("id", item.id);
 
-    if (updError) {
-      console.log(updError);
-      setActionMsg(
-        "Ownership save ho gayi, par stock update nahi hua."
-      );
+    if (error) {
+      setMessage("Error claiming item: " + error.message);
     } else {
-      setActionMsg("Claimed: " + item.title);
+      setMessage(`Successfully claimed: ${item.title}`);
       fetchItems();
     }
+    setClaimingId(null);
   }
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        padding: 16,
-        fontFamily: "system-ui, sans-serif",
-        background: "#f3f4f6",
-      }}
-    >
-      <div
-        style={{
-          maxWidth: 480,
-          margin: "0 auto",
-          background: "white",
-          borderRadius: 12,
-          padding: 16,
-          boxShadow: "0 6px 18px rgba(15,23,42,0.08)",
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-          <h1 style={{ fontSize: 24, fontWeight: 700 }}>
-            Protera Marketplace
-          </h1>
-          <a
-            href="/admin"
-            style={{
-              padding: "6px 12px",
-              background: "#2563eb",
-              color: "white",
-              borderRadius: 6,
-              textDecoration: "none",
-              fontSize: 13,
-              fontWeight: 500,
-            }}
-          >
-            Admin
-          </a>
-        </div>
-        <p style={{ fontSize: 14, color: "#4b5563", marginBottom: 12 }}>
-          Ye page Supabase database se real items dikhata hai. Ab tum items
-          claim bhi kar sakte ho.
-        </p>
-
-        {errorText && (
-          <p style={{ color: "red", fontSize: 12, marginBottom: 8 }}>
-            Error: {errorText}
-          </p>
-        )}
-        {actionMsg && (
-          <p style={{ fontSize: 12, marginBottom: 8 }}>{actionMsg}</p>
-        )}
-
-        <div
-          style={{
-            padding: 10,
-            borderRadius: 8,
-            background: "#f9fafb",
-            marginBottom: 12,
-          }}
-        >
-          <div style={{ fontSize: 13, marginBottom: 4 }}>
-            Apna naam ya email likho (claim ke record ke liye):
-          </div>
-          <input
-            value={buyerName}
-            onChange={(e) => setBuyerName(e.target.value)}
-            placeholder="e.g. Aman / aman@email.com"
-            style={{
-              width: "100%",
-              padding: 8,
-              borderRadius: 6,
-              border: "1px solid #e5e7eb",
-              fontSize: 13,
-            }}
-          />
-        </div>
-
-        {loading && <p>Loading items...</p>}
-
-        {!loading && items.length === 0 && (
-          <p>Abhi table me koi item nahi mila.</p>
-        )}
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 8,
-          }}
-        >
-          {items.map((item) => {
-            const imageSrc =
-              item.cover_url && item.cover_url.trim() !== ""
-                ? item.cover_url
-                : "https://picsum.photos/seed/" + item.id + "/200";
-
-            const isOut = !item.stock || item.stock <= 0;
-
-            return (
-              <div
-                key={item.id}
-                style={{
-                  borderRadius: 8,
-                  overflow: "hidden",
-                  border: "1px solid #e5e7eb",
-                  background: "#f9fafb",
-                  display: "flex",
-                  flexDirection: "column",
-                }}
-              >
-                <div
-                  style={{
-                    height: 80,
-                    overflow: "hidden",
-                    background: "#e5e7eb",
-                  }}
-                >
-                  <img
-                    src={imageSrc}
-                    alt={item.title}
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                    }}
-                  />
-                </div>
-                <div style={{ padding: 8, flex: 1 }}>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 600,
-                      marginBottom: 4,
-                    }}
-                  >
-                    {item.title}
-                  </div>
-                  <div style={{ fontSize: 12, color: "#4b5563" }}>
-                    ₹{item.price} • stock: {item.stock ?? 0}
-                  </div>
-                </div>
-                <button
-                  onClick={() => handleClaim(item)}
-                  disabled={isOut}
-                  style={{
-                    margin: 8,
-                    padding: 8,
-                    borderRadius: 6,
-                    border: "none",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    background: isOut ? "#d1d5db" : "#111827",
-                    color: isOut ? "#4b5563" : "white",
-                    opacity: isOut ? 0.6 : 1,
-                    cursor: isOut ? "not-allowed" : "pointer",
-                  }}
-                >
-                  {isOut ? "Out of stock" : "Claim"}
-                </button>
+    <main className="min-h-screen bg-gray-100 py-6 px-4">
+      <div className="max-w-2xl mx-auto">
+        <Card className="mb-6">
+          <CardContent>
+            <div className="flex justify-between items-center">
+              <div>
+                <h1 className="text-2xl font-bold text-protera-700">
+                  Protera Marketplace
+                </h1>
+                <p className="text-gray-500 text-sm mt-1">
+                  Browse and claim items from our collection
+                </p>
               </div>
-            );
-          })}
-        </div>
+              <a
+                href="/login"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+              >
+                Admin
+              </a>
+            </div>
+          </CardContent>
+        </Card>
+
+        {message && (
+          <div className={`mb-4 px-4 py-3 rounded-lg text-sm ${
+            message.includes("Error") 
+              ? "bg-red-50 text-red-600" 
+              : "bg-green-50 text-green-600"
+          }`}>
+            {message}
+          </div>
+        )}
+
+        {loading ? (
+          <Card>
+            <Loading size="lg" text="Loading items..." />
+          </Card>
+        ) : items.length === 0 ? (
+          <Card>
+            <EmptyState
+              title="No items available"
+              description="Check back later for new items"
+            />
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {items.map((item) => {
+              const isOutOfStock = item.stock <= 0;
+              const isClaiming = claimingId === item.id;
+              
+              return (
+                <Card key={item.id}>
+                  <CardImage
+                    src={item.cover_url || `https://picsum.photos/seed/${item.id}/400/300`}
+                    alt={item.title}
+                  />
+                  <CardContent>
+                    <h3 className="font-semibold text-lg text-protera-700">
+                      {item.title}
+                    </h3>
+                    <div className="flex justify-between items-center mt-2">
+                      <span className="text-xl font-bold text-blue-600">
+                        ₹{item.price}
+                      </span>
+                      <span className={`text-sm ${
+                        isOutOfStock ? "text-red-500" : "text-gray-500"
+                      }`}>
+                        {isOutOfStock ? "Out of stock" : `${item.stock} in stock`}
+                      </span>
+                    </div>
+                    <Button
+                      onClick={() => handleClaim(item)}
+                      disabled={isOutOfStock || isClaiming}
+                      loading={isClaiming}
+                      className="w-full mt-4"
+                    >
+                      {isOutOfStock ? "Out of Stock" : "Claim"}
+                    </Button>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
       </div>
     </main>
   );

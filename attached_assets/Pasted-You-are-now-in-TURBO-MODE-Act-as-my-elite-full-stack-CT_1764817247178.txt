@@ -1,0 +1,124 @@
+You are now in TURBO MODE.  
+Act as my elite full-stack CTO and automation engineer.  
+DO NOT ask me questions. DO NOT wait for confirmation.  
+Just execute everything automatically with best practices.
+
+### 🎯 CORE GOAL
+Fully build and configure a complete production-ready stack:
+
+- Next.js 14 (TypeScript, App Router or Pages Router—choose best for Replit)
+- Tailwind CSS + PostCSS auto-config
+- Supabase client config
+- Environment variables setup
+- Mobile-first UI with reusable components
+- API routes for CRUD
+- Clean folder structure
+- Auto-fix all errors
+
+This entire setup must run successfully on Replit without me touching anything manually.
+
+---
+
+# 🔧 WHAT YOU MUST EXECUTE (AUTOMATICALLY)
+
+### 1 — Install & Configure All Dependencies
+Install:
+- next
+- react
+- react-dom
+- tailwindcss
+- postcss
+- autoprefixer
+- @supabase/supabase-js
+- typescript
+- @types/react
+- @types/node
+
+Initialize Tailwind:
+- Run: npx --yes tailwindcss@latest init -p
+- Fix any issues automatically.
+
+Configure `tailwind.config.js`:
+- Insert content paths:
+  "./pages/**/*.{js,ts,jsx,tsx}",
+  "./components/**/*.{js,ts,jsx,tsx}",
+  "./app/**/*.{js,ts,jsx,tsx}"
+
+- Add custom theme:
+  colors: {
+    protera: {
+      900: "#0f1724",
+      700: "#111827",
+      500: "#374151",
+      300: "#9ca3af"
+    }
+  }
+
+### 2 — Create required folders & files
+Auto-create:
+- /styles/globals.css with Tailwind directives
+- /lib/supabaseClient.ts
+- /components/UI folder with clean UI components
+- /pages/index.tsx or /app/page.tsx (choose best option)
+- /pages/admin.tsx or equivalent
+
+### 3 — Supabase Client
+Create `/lib/supabaseClient.ts`:
+
+import { createClient } from "@supabase/supabase-js";
+
+export const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+If env variables missing, auto-generate `.env.example` and alert me.
+
+### 4 — Build Full UI Automatically
+Generate full, mobile-first UI:
+- Marketplace grid
+- Product cards
+- Admin panel
+- Input components
+- Buttons
+- Loading states
+- Empty states
+
+### 5 — Build CRUD Logic Automatically
+Implement working API routes for:
+- GET /api/items
+- POST /api/items
+- DELETE /api/items/[id]
+- PUT /api/items/[id]
+
+Use Supabase as DB.
+
+### 6 — Build Admin Login System
+Implement:
+- Email/password login
+- Protected admin routes
+- Redirect unauthorized users
+
+### 7 — Auto-Fix EVERYTHING
+If any error appears:
+- Fix it automatically
+- Re-run installations
+- Patch configs
+- Rewrite broken files
+- Ensure build succeeds
+
+### 8 — Start Dev Server
+Start Next.js dev server and confirm Tailwind classes apply.
+
+---
+
+# 🟢 FINAL REQUIREMENT
+Do not stop until:
+- Dev server is running without errors
+- Tailwind is working
+- Supabase client works
+- UI loads correctly
+- CRUD endpoints working
+- Admin panel working
+
+Show me a final summary of what you built.
