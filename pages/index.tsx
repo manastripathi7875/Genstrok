@@ -49,7 +49,7 @@ export default function Home() {
 
     setActionMsg("Processing claim...");
 
-    const { error: ownError } = await supabase.from("ownerships").insert([
+    const { error: ownError } = await supabase.from("ownership").insert([
       {
         item_id: item.id,
         buyer_name: buyerName,
