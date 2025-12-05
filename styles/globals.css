@@ -13,3 +13,16 @@ body {
   background-color: #f3f4f6;
   min-height: 100vh;
 }
+/* Genstrok form system */
+
+.label-primary {
+  @apply mb-1 text-[11px] text-slate-300;
+}
+
+.input-primary {
+  @apply w-full rounded-2xl border border-slate-700/70 bg-slate-950/90 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500;
+}
+
+.textarea-primary {
+  @apply w-full rounded-2xl border border-slate-700/70 bg-slate-950/90 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500;
+}
