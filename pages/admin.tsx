@@ -1,406 +1,377 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
-import { BRAND } from "../lib/brand";
 
-type Item = {
+type ItemRow = {
   id: string;
   title: string;
   price: number;
   stock: number;
   cover_url: string | null;
-  creator_name?: string | null;
+  creator_name: string | null;
+  creator_id: string | null;
+  is_paid?: boolean | null;
+  payment_link?: string | null;
+  coins_per_claim?: number | null;
 };
 
-export default function Admin() {
-  const [items, setItems] = useState<Item[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [errorText, setErrorText] = useState("");
+export default function AdminPage() {
+  const [user, setUser] = useState<any>(null);
+  const [needsLogin, setNeedsLogin] = useState(false);
 
-  const [title, setTitle] = useState("");
-  const [price, setPrice] = useState<string>("");
-  const [stock, setStock] = useState<string>("");
-  const [coverUrl, setCoverUrl] = useState("");
-  const [creator, setCreator] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-const [adminUser, setAdminUser] = useState<any>(null);
+  const [items, setItems] = useState<ItemRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  async function fetchItems() {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from("items")
-      .select("*")
-      .order("created_at", { ascending: false });
+  // form fields
+  const [title, setTitle] = useState("");
+  const [price, setPrice] = useState("");
+  const [stock, setStock] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
+  const [isPaid, setIsPaid] = useState(false);
+  const [paymentLink, setPaymentLink] = useState("");
+  const [coinsPerClaim, setCoinsPerClaim] = useState("10");
 
-    if (error) {
-      console.log(error);
-      setErrorText(error.message);
-    } else {
-      setItems((data || []) as Item[]);
-      setErrorText("");
-    }
-    setLoading(false);
-  }
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
 
+  // auto-hide toast
   useEffect(() => {
-  async function init() {
-    const { data } = await supabase.auth.getUser();
-    if (data.user) {
-      setAdminUser(data.user);
+    if (!toast) return;
+    const id = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(id);
+  }, [toast]);
+
+  // load admin user + items
+  useEffect(() => {
+    async function load() {
+      const { data: authData, error: authError } =
+        await supabase.auth.getUser();
+
+      if (authError || !authData?.user) {
+        setNeedsLogin(true);
+        setLoading(false);
+        return;
+      }
+
+      const u = authData.user;
+      setUser(u);
+
+      const { data, error } = await supabase
+        .from("items")
+        .select(
+          "id, title, price, stock, cover_url, creator_name, creator_id, is_paid, payment_link, coins_per_claim"
+        )
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error(error);
+        setItems([]);
+      } else {
+        setItems((data || []) as ItemRow[]);
+      }
+
+      setLoading(false);
     }
-    fetchItems();
-  }
-  init();
-}, []);
+
+    load();
+  }, []);
 
   function resetForm() {
+    setEditingId(null);
     setTitle("");
     setPrice("");
     setStock("");
-    setCoverUrl("");
-    setCreator("");
-    setFile(null);
-    setEditingId(null);
+    setImageUrl("");
+    setIsPaid(false);
+    setPaymentLink("");
+    setCoinsPerClaim("10");
   }
 
-  async function uploadImageIfNeeded(): Promise<string | null> {
-    if (!file) {
-      return coverUrl.trim() || null;
-    }
-
-    const ext = file.name.split(".").pop() || "jpg";
-    const filePath =
-      "items/" +
-      Date.now().toString() +
-      "-" +
-      Math.random().toString(36).slice(2) +
-      "." +
-      ext;
-
-    const { data, error } = await supabase.storage
-      .from("item-images")
-      .upload(filePath, file);
-
-    if (error || !data) {
-      console.log(error);
-      throw new Error(
-        "Image upload failed: " + (error?.message || "unknown")
-      );
-    }
-
-    const { data: publicData } = supabase.storage
-      .from("item-images")
-      .getPublicUrl(data.path);
-
-    return publicData.publicUrl || null;
+  function handleEdit(item: ItemRow) {
+    setEditingId(item.id);
+    setTitle(item.title);
+    setPrice(String(item.price));
+    setStock(String(item.stock));
+    setImageUrl(item.cover_url || "");
+    setIsPaid(!!item.is_paid);
+    setPaymentLink(item.payment_link || "");
+    setCoinsPerClaim(
+      item.coins_per_claim != null ? String(item.coins_per_claim) : "10"
+    );
   }
 
-  async function handleSave(e: any) {
-    e.preventDefault();
+  async function handleSave() {
+    if (!user) return;
 
-    if (!title.trim()) {
-      setErrorText("Title is required");
+    const priceNum = Number(price);
+    const stockNum = Number(stock);
+    const coinsNum = Number(coinsPerClaim);
+
+    if (!title.trim() || !priceNum || !stockNum) {
+      setToast("Please fill all required fields.");
       return;
     }
-
-    const priceNumber = Number(price) || 0;
-    const stockNumber = Number(stock) || 0;
 
     setSaving(true);
-    setErrorText("");
-
-    let imageUrl: string | null = null;
-
-    try {
-      imageUrl = await uploadImageIfNeeded();
-    } catch (err: any) {
-      setSaving(false);
-      setErrorText(err.message || "Image upload failed");
-      return;
-    }
 
     const payload = {
       title: title.trim(),
-      price: priceNumber,
-      stock: stockNumber,
-      cover_url: imageUrl,
-      creator_name: creator.trim() || null,
-      creator_id: adminUser ? adminUser.id : null,   // 👈 IMPORTANT
+      price: priceNum,
+      stock: stockNum,
+      cover_url: imageUrl.trim() || null,
+      creator_name: user.email || "Admin",
+      creator_id: user.id,
+      is_paid: isPaid,
+      payment_link: paymentLink.trim() || null,
+      coins_per_claim: coinsNum || 10,
     };
 
+    let error: any = null;
+
     if (editingId) {
-      const { error } = await supabase
+      const { error: updateError } = await supabase
         .from("items")
         .update(payload)
         .eq("id", editingId);
-
-      if (error) {
-        console.log(error);
-        setErrorText(error.message);
-        setSaving(false);
-        return;
-      }
+      error = updateError;
     } else {
-      const { error } = await supabase.from("items").insert([payload]);
-      if (error) {
-        console.log(error);
-        setErrorText(error.message);
-        setSaving(false);
-        return;
-      }
+      const { error: insertError } = await supabase
+        .from("items")
+        .insert(payload);
+      error = insertError;
     }
 
-    setSaving(false);
-    resetForm();
-    fetchItems();
-  }
+    if (error) {
+      console.error(error);
+      setToast("Error saving item.");
+      setSaving(false);
+      return;
+    }
 
-  async function handleEdit(item: Item) {
-    setEditingId(item.id);
-    setTitle(item.title);
-    setPrice(String(item.price ?? ""));
-    setStock(String(item.stock ?? ""));
-    setCoverUrl(item.cover_url ?? "");
-    setCreator(item.creator_name ?? "");
-    setFile(null);
+    setToast("Saved!");
+    resetForm();
+
+    const { data } = await supabase
+      .from("items")
+      .select(
+        "id, title, price, stock, cover_url, creator_name, creator_id, is_paid, payment_link, coins_per_claim"
+      )
+      .order("created_at", { ascending: false });
+
+    setItems((data || []) as ItemRow[]);
+    setSaving(false);
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Delete this item?")) return;
-    const { error } = await supabase.from("items").delete().eq("id", id);
-    if (error) {
-      console.log(error);
-      setErrorText(error.message);
-    }
-    fetchItems();
+    const ok = window.confirm("Delete this item?");
+    if (!ok) return;
+    await supabase.from("items").delete().eq("id", id);
+    setItems((prev) => prev.filter((x) => x.id !== id));
   }
 
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    window.location.href = "/";
+  if (needsLogin) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col items-center justify-center p-6">
+        <h1 className="text-xl font-semibold">Admin</h1>
+        <p className="mt-2 text-sm">Please log in first.</p>
+        <a
+          href="/auth"
+          className="mt-4 px-4 py-2 rounded bg-violet-500 text-slate-950 text-sm"
+        >
+          Login →
+        </a>
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50">
-      <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -left-32 -top-40 h-80 w-80 rounded-full bg-violet-600/25 blur-3xl" />
-        <div className="absolute right-[-40px] bottom-[-80px] h-80 w-80 rounded-full bg-sky-500/20 blur-3xl" />
-      </div>
-
-      <main className="relative mx-auto flex min-h-screen max-w-5xl flex-col px-4 pb-10 pt-6 sm:px-6">
+    <div className="min-h-screen bg-slate-950 text-slate-50 pb-12">
+      <main className="mx-auto max-w-5xl p-6">
+        {/* top bar */}
         <header className="mb-6 flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-semibold">
-              {BRAND.name} admin
-            </h1>
-            <p className="text-[11px] text-slate-400">
-              Create drops, upload covers, manage stock.
+            <h1 className="text-xl font-semibold">Admin Panel</h1>
+            <p className="mt-1 text-xs text-slate-400">
+              Add / edit drops, prices, stock, images & payment links.
             </p>
           </div>
-          <div className="flex gap-2">
-            <a
-              href="/"
-              className="rounded-full border border-slate-700/70 bg-slate-950/80 px-3 py-1.5 text-xs font-medium text-slate-200"
-            >
-              View market
-            </a>
-            <button
-              onClick={handleLogout}
-              className="rounded-full border border-slate-700/70 bg-slate-950/80 px-3 py-1.5 text-xs font-medium text-slate-200"
-            >
-              Logout
-            </button>
-          </div>
+          <a
+            href="/"
+            className="rounded-xl bg-slate-800 px-3 py-1.5 text-xs text-slate-200"
+          >
+            Back to home
+          </a>
         </header>
 
-        {/* form */}
-        <section className="mb-6 rounded-2xl border border-slate-800/80 bg-slate-950/80 p-4 shadow-lg shadow-slate-950/70 backdrop-blur">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold">
-              {editingId ? "Edit drop" : "Add new drop"}
-            </h2>
+        {/* FORM */}
+        <section className="rounded-3xl border border-slate-800 bg-slate-950/90 p-5 mb-6">
+          <h2 className="text-sm font-semibold mb-4">
+            {editingId ? "Edit drop" : "Create new drop"}
+          </h2>
+
+          <div className="grid sm:grid-cols-2 gap-4 text-[11px]">
+            <div>
+              <p className="label-primary">Title</p>
+              <input
+                className="input-primary"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <p className="label-primary">Price (₹)</p>
+              <input
+                className="input-primary"
+                type="number"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <p className="label-primary">Stock</p>
+              <input
+                className="input-primary"
+                type="number"
+                value={stock}
+                onChange={(e) => setStock(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <p className="label-primary">Cover image URL</p>
+              <input
+                className="input-primary"
+                value={imageUrl}
+                onChange={(e) => setImageUrl(e.target.value)}
+                placeholder="https://example.com/image.jpg"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 mt-1">
+              <input
+                type="checkbox"
+                checked={isPaid}
+                onChange={(e) => setIsPaid(e.target.checked)}
+              />
+              <span className="text-[11px] text-slate-200">
+                This is a paid drop (requires Cashfree payment)
+              </span>
+            </div>
+
+            {isPaid && (
+              <div>
+                <p className="label-primary">Cashfree payment link</p>
+                <input
+                  className="input-primary"
+                  value={paymentLink}
+                  onChange={(e) => setPaymentLink(e.target.value)}
+                  placeholder="https://payments.cashfree.com/order#/..."
+                />
+                <p className="mt-1 text-[10px] text-slate-500">
+                  Create a Payment Link in your Cashfree dashboard and
+                  paste the URL here.
+                </p>
+              </div>
+            )}
+
+            <div>
+              <p className="label-primary">Coins per claim</p>
+              <input
+                className="input-primary"
+                type="number"
+                value={coinsPerClaim}
+                onChange={(e) => setCoinsPerClaim(e.target.value)}
+              />
+              <p className="mt-1 text-[10px] text-slate-500">
+                Users will earn this many coins when they claim this
+                drop.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 flex gap-2">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="px-5 py-2 rounded-xl bg-emerald-500 text-slate-950 text-xs font-semibold disabled:opacity-60"
+            >
+              {saving ? "Saving…" : "Save drop"}
+            </button>
             {editingId && (
               <button
-                type="button"
                 onClick={resetForm}
-                className="text-[11px] text-sky-300 underline"
+                className="px-4 py-2 rounded-xl bg-slate-800 text-slate-200 text-xs"
               >
                 Cancel edit
               </button>
             )}
           </div>
-
-          <form
-            onSubmit={handleSave}
-            className="grid grid-cols-1 gap-3 sm:grid-cols-2"
-          >
-            <div className="space-y-1">
-              <label className="text-[11px] text-slate-300">
-                Title
-              </label>
-              <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="w-full rounded-xl border border-slate-700/70 bg-slate-950/80 px-3 py-2 text-xs text-slate-100"
-                placeholder="Hand made clay lamp"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[11px] text-slate-300">
-                Creator name (optional)
-              </label>
-              <input
-                value={creator}
-                onChange={(e) => setCreator(e.target.value)}
-                className="w-full rounded-xl border border-slate-700/70 bg-slate-950/80 px-3 py-2 text-xs text-slate-100"
-                placeholder="Aman / Studio XYZ"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[11px] text-slate-300">
-                Price (₹)
-              </label>
-              <input
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                type="number"
-                className="w-full rounded-xl border border-slate-700/70 bg-slate-950/80 px-3 py-2 text-xs text-slate-100"
-                placeholder="499"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[11px] text-slate-300">
-                Stock
-              </label>
-              <input
-                value={stock}
-                onChange={(e) => setStock(e.target.value)}
-                type="number"
-                className="w-full rounded-xl border border-slate-700/70 bg-slate-950/80 px-3 py-2 text-xs text-slate-100"
-                placeholder="10"
-              />
-            </div>
-
-            <div className="space-y-1 sm:col-span-2">
-              <label className="text-[11px] text-slate-300">
-                Cover image URL (optional)
-              </label>
-              <input
-                value={coverUrl}
-                onChange={(e) => setCoverUrl(e.target.value)}
-                className="w-full rounded-xl border border-slate-700/70 bg-slate-950/80 px-3 py-2 text-xs text-slate-100"
-                placeholder="https://example.com/image.jpg"
-              />
-              <label className="mt-2 block text-[11px] text-slate-300">
-                Or upload image file
-              </label>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e: any) =>
-                  setFile(e.target.files?.[0] || null)
-                }
-                className="w-full text-[11px] text-slate-300"
-              />
-              <p className="text-[10px] text-slate-500">
-                If you choose a file, it will be uploaded to
-                storage and used as the cover.
-              </p>
-            </div>
-
-            <div className="sm:col-span-2 flex justify-end gap-2">
-              <button
-                type="submit"
-                disabled={saving}
-                className="rounded-xl bg-violet-500 px-4 py-2 text-xs font-semibold text-slate-950 hover:bg-violet-400 disabled:opacity-60"
-              >
-                {editingId ? "Save changes" : "Add drop"}
-              </button>
-            </div>
-          </form>
-
-          {errorText && (
-            <p className="mt-2 text-[11px] text-red-300">
-              Error: {errorText}
-            </p>
-          )}
         </section>
 
-        {/* items list */}
+        {/* ITEMS LIST */}
         <section>
-          <h2 className="mb-3 text-sm font-semibold text-slate-100">
-            All drops ({items.length})
-          </h2>
+          <h2 className="text-sm mb-3 font-semibold">All drops</h2>
 
           {loading ? (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="h-32 animate-pulse rounded-2xl bg-slate-900/80"
-                />
-              ))}
-            </div>
+            <p className="text-xs text-slate-400">Loading…</p>
           ) : items.length === 0 ? (
-            <p className="text-xs text-slate-400">
-              No items yet. Add your first drop above.
-            </p>
+            <p className="text-xs text-slate-400">No drops yet.</p>
           ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {items.map((item) => {
-                const imageSrc = item.cover_url?.trim()
-                  ? item.cover_url
-                  : `https://picsum.photos/seed/${item.id}/300`;
-                return (
-                  <article
-                    key={item.id}
-                    className="flex gap-3 rounded-2xl border border-slate-800/80 bg-slate-950/80 p-3 shadow-sm shadow-slate-950/60 backdrop-blur"
-                  >
-                    <div className="h-20 w-20 overflow-hidden rounded-xl bg-slate-800/80">
-                      <img
-                        src={imageSrc}
-                        alt={item.title}
-                        className="h-full w-full object-cover"
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <div className="text-xs font-semibold text-slate-50 line-clamp-2">
-                        {item.title}
-                      </div>
-                      <div className="mt-1 text-[11px] text-slate-400">
-                        ₹{item.price} • Stock: {item.stock ?? 0}
-                      </div>
-                      {item.creator_name && (
-                        <div className="mt-1 text-[11px] text-sky-300">
-                          By {item.creator_name}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <button
-                        onClick={() => handleEdit(item)}
-                        className="rounded-full bg-amber-500/90 px-3 py-1 text-[11px] font-semibold text-slate-950 hover:bg-amber-400"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(item.id)}
-                        className="rounded-full bg-red-500/90 px-3 py-1 text-[11px] font-semibold text-slate-50 hover:bg-red-400"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </article>
-                );
-              })}
+            <div className="space-y-3">
+              {items.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/90 p-3"
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-slate-50">
+                      {item.title}
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      ₹{item.price} • Stock {item.stock} •{" "}
+                      {item.is_paid ? "Paid" : "Free"} • Coins per
+                      claim: {item.coins_per_claim ?? 10}
+                    </p>
+                    {item.is_paid && item.payment_link && (
+                      <p className="text-[10px] text-slate-500 mt-0.5">
+                        Cashfree:{" "}
+                        <span className="break-all">
+                          {item.payment_link}
+                        </span>
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleEdit(item)}
+                      className="px-3 py-1 rounded bg-violet-500 text-slate-950 text-xs"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(item.id)}
+                      className="px-3 py-1 rounded bg-red-600 text-slate-50 text-xs"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </section>
       </main>
+
+      {toast && (
+        <div className="fixed bottom-20 inset-x-0 flex justify-center">
+          <div className="px-4 py-2 bg-emerald-500/20 border border-emerald-500 rounded-xl text-xs text-emerald-300">
+            {toast}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,79 +1,100 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { BRAND } from "../lib/brand";
 
 export default function AuthPage() {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [msg, setMsg] = useState("");
-  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
 
+  // 🔁 Already logged-in user ko auth page pe aane hi mat do
   useEffect(() => {
     async function checkUser() {
       const { data } = await supabase.auth.getUser();
-      if (data.user) {
-        setUser(data.user);
+      if (data.user && typeof window !== "undefined") {
+        window.location.href = "/";
       }
     }
     checkUser();
   }, []);
 
+  // ✅ Login + Signup dono yahi handle
   async function handleSubmit(e: any) {
     e.preventDefault();
-    setMsg(mode === "login" ? "Logging in..." : "Creating account...");
+    setMsg("");
+    setLoading(true);
 
-    if (mode === "login") {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      if (error) {
-        setMsg("Error: " + error.message);
+    try {
+      if (mode === "login") {
+        // 🔐 Password login
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+        if (error) {
+          setMsg("Error: " + error.message);
+        } else {
+          // 👍 Login success → direct homepage
+          if (typeof window !== "undefined") {
+            window.location.href = "/";
+          } else {
+            setMsg("Logged in.");
+          }
+        }
       } else {
-        setMsg("Logged in as " + (data.user?.email || ""));
-        setUser(data.user);
+        // 🆕 Sign-up
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+        });
+
+        if (error) {
+          setMsg("Error: " + error.message);
+        } else {
+          // 2 possible cases:
+          // 1) Email confirmation OFF → session milta hai → direct home
+          // 2) Email confirmation ON → session null → user ko email check karna padega
+          if (data.session && typeof window !== "undefined") {
+            // Direct login hogaya, chalo home
+            window.location.href = "/";
+          } else {
+            setMsg(
+              "Account created. Check your email to confirm, then log in."
+            );
+          }
+        }
       }
-    } else {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-      });
-      if (error) {
-        setMsg("Error: " + error.message);
-      } else {
-        setMsg(
-          "Account created. Check your email (if confirmation is enabled) and then log in."
-        );
-        setUser(data.user ?? null);
-      }
+    } finally {
+      setLoading(false);
     }
-  }
-
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    setUser(null);
-    setMsg("Logged out");
   }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50">
+      {/* gradient background */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute -left-24 -top-16 h-64 w-64 rounded-full bg-violet-500/20 blur-3xl" />
         <div className="absolute -right-24 bottom-[-60px] h-64 w-64 rounded-full bg-cyan-500/20 blur-3xl" />
       </div>
 
       <main className="relative mx-auto flex min-h-screen max-w-md flex-col px-4 pb-10 pt-8">
+        {/* top bar */}
         <header className="mb-6 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-slate-900/80 ring-1 ring-slate-700/60">
-              <span className="text-lg font-bold tracking-tight">P</span>
+              <span className="text-lg font-bold tracking-tight">
+                {BRAND.shortName || BRAND.name?.[0] || "G"}
+              </span>
             </div>
             <div>
               <div className="text-sm font-semibold tracking-tight">
-                Protera Account
+                {BRAND.name} account
               </div>
               <div className="text-[11px] text-slate-400">
-                Sign in to claim & earn coins
+                Log in to claim drops & earn {BRAND.coinName}.
               </div>
             </div>
           </div>
@@ -81,10 +102,11 @@ export default function AuthPage() {
             href="/"
             className="rounded-full border border-slate-700/70 bg-slate-900/60 px-3 py-1.5 text-xs font-medium text-slate-200 shadow-sm shadow-slate-900/40 backdrop-blur"
           >
-            Back to store
+            Back to market
           </a>
         </header>
 
+        {/* card */}
         <section className="rounded-2xl border border-slate-800/80 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/70 backdrop-blur">
           <div className="mb-4 flex items-center justify-between">
             <h1 className="text-base font-semibold text-slate-50">
@@ -92,19 +114,18 @@ export default function AuthPage() {
             </h1>
             <button
               type="button"
-              onClick={() => setMode(mode === "login" ? "signup" : "login")}
+              onClick={() =>
+                setMode(mode === "login" ? "signup" : "login")
+              }
               className="text-[11px] text-violet-300 underline"
             >
-              {mode === "login" ? "Need an account? Sign up" : "Have an account? Log in"}
+              {mode === "login"
+                ? "Need an account? Sign up"
+                : "Have an account? Log in"}
             </button>
           </div>
 
-          {user && (
-            <div className="mb-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-100">
-              Logged in as <span className="font-semibold">{user.email}</span>
-            </div>
-          )}
-
+          {/* form */}
           <form onSubmit={handleSubmit} className="space-y-3">
             <div>
               <label className="mb-1 block text-[11px] text-slate-300">
@@ -119,6 +140,7 @@ export default function AuthPage() {
                 required
               />
             </div>
+
             <div>
               <label className="mb-1 block text-[11px] text-slate-300">
                 Password
@@ -133,25 +155,22 @@ export default function AuthPage() {
               />
             </div>
 
-            <button className="mt-2 w-full rounded-xl bg-violet-500 px-3 py-2 text-xs font-semibold text-slate-950 hover:bg-violet-400">
-              {mode === "login" ? "Log in" : "Sign up"}
+            <button
+              className="mt-2 w-full rounded-xl bg-violet-500 px-3 py-2 text-xs font-semibold text-slate-950 hover:bg-violet-400 disabled:opacity-60"
+              disabled={loading}
+            >
+              {loading
+                ? mode === "login"
+                  ? "Logging in..."
+                  : "Creating account..."
+                : mode === "login"
+                ? "Log in"
+                : "Sign up"}
             </button>
           </form>
 
           {msg && (
-            <p className="mt-3 text-[11px] text-slate-300">
-              {msg}
-            </p>
-          )}
-
-          {user && (
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="mt-4 w-full rounded-xl border border-slate-700/70 bg-slate-950/70 px-3 py-2 text-[11px] font-semibold text-slate-200 hover:bg-slate-900"
-            >
-              Log out
-            </button>
+            <p className="mt-3 text-[11px] text-slate-300">{msg}</p>
           )}
         </section>
       </main>

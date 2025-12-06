@@ -1,3 +1,4 @@
+// pages/wallet.tsx
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { BRAND } from "../lib/brand";
@@ -24,34 +25,36 @@ export default function WalletPage() {
   const [itemsById, setItemsById] = useState<Record<string, ItemRow>>({});
   const [loading, setLoading] = useState(true);
 
+  // 💰 rupee wallet state
+  const [walletBalance, setWalletBalance] = useState<number>(0);
+  const [walletLoading, setWalletLoading] = useState(true);
+  const [topupLoadingAmount, setTopupLoadingAmount] = useState<number | null>(
+    null
+  );
+  const [toast, setToast] = useState<string | null>(null);
+
   const [coinPulse, setCoinPulse] = useState(false);
 
-  // 🧠 1) user + ownerships + item titles load
+  // 1) user + ownerships + wallet load
   useEffect(() => {
     async function load() {
       setLoading(true);
+      setWalletLoading(true);
 
-      // current user lao
       const { data: authData, error: authError } =
         await supabase.auth.getUser();
 
-      if (authError) {
-        console.error(authError);
+      if (authError || !authData?.user) {
         setNeedsLogin(true);
         setLoading(false);
+        setWalletLoading(false);
         return;
       }
 
-      const currentUser = authData?.user;
-      if (!currentUser) {
-        setNeedsLogin(true);
-        setLoading(false);
-        return;
-      }
-
+      const currentUser = authData.user;
       setUser(currentUser);
 
-      // ownerships jaha buyer_id = user.id
+      // ---- a) ownerships (coins history) ----
       const { data: ownData, error: ownError } = await supabase
         .from("ownerships")
         .select("id, created_at, item_id, buyer_name, buyer_id, coins")
@@ -61,50 +64,75 @@ export default function WalletPage() {
       if (ownError) {
         console.error(ownError);
         setRows([]);
-        setItemsById({});
-        setLoading(false);
-        return;
+      } else {
+        const owns = (ownData || []) as OwnershipRow[];
+        setRows(owns);
+
+        const ids = Array.from(
+          new Set(owns.map((o) => o.item_id).filter(Boolean))
+        );
+
+        if (ids.length > 0) {
+          const { data: itemData, error: itemError } = await supabase
+            .from("items")
+            .select("id, title")
+            .in("id", ids);
+
+          if (!itemError && itemData) {
+            const map: Record<string, ItemRow> = {};
+            (itemData || []).forEach((it: any) => {
+              map[it.id] = { id: it.id, title: it.title };
+            });
+            setItemsById(map);
+          }
+        }
       }
 
-      const owns = (ownData || []) as OwnershipRow[];
-      setRows(owns);
-
-      // items titles fetch karo
-      const ids = Array.from(
-        new Set(owns.map((o) => o.item_id).filter(Boolean))
-      );
-
-      if (ids.length === 0) {
-        setItemsById({});
-        setLoading(false);
-        return;
-      }
-
-      const { data: itemData, error: itemError } = await supabase
-        .from("items")
-        .select("id, title")
-        .in("id", ids);
-
-      if (itemError) {
-        console.error(itemError);
-        setItemsById({});
-        setLoading(false);
-        return;
-      }
-
-      const map: Record<string, ItemRow> = {};
-      (itemData || []).forEach((it: any) => {
-        map[it.id] = { id: it.id, title: it.title };
-      });
-
-      setItemsById(map);
       setLoading(false);
+
+      // ---- b) RUPEE WALLET load ----
+      const { data: walletRow, error: walletError } = await supabase
+        .from("wallets")
+        .select("balance")
+        .eq("user_id", currentUser.id)
+        .maybeSingle();
+
+      if (walletError && walletError.code !== "PGRST116") {
+        // PGRST116 = row not found
+        console.error(walletError);
+        setWalletBalance(0);
+        setWalletLoading(false);
+        return;
+      }
+
+      if (!walletRow) {
+        // wallet row create karo if missing
+        const { data: created, error: createError } = await supabase
+          .from("wallets")
+          .insert({
+            user_id: currentUser.id,
+            balance: 0,
+          })
+          .select("balance")
+          .maybeSingle();
+
+        if (createError) {
+          console.error(createError);
+          setWalletBalance(0);
+        } else {
+          setWalletBalance(Number(created?.balance || 0));
+        }
+      } else {
+        setWalletBalance(Number(walletRow.balance || 0));
+      }
+
+      setWalletLoading(false);
     }
 
     load();
   }, []);
 
-  // 🧠 2) Realtime: new claims aate hi wallet auto-update
+  // 2) Realtime coins update (ownerships)
   useEffect(() => {
     if (!user) return;
 
@@ -119,13 +147,10 @@ export default function WalletPage() {
         },
         (payload) => {
           const newRow = payload.new as OwnershipRow;
-
-          // sirf isi user ke rows
           if (newRow.buyer_id !== user.id) return;
 
           setRows((prev) => [newRow, ...prev]);
 
-          // agar item title abhi map me nahi to later fetch kar sakte hain
           if (newRow.item_id && !itemsById[newRow.item_id]) {
             supabase
               .from("items")
@@ -142,7 +167,6 @@ export default function WalletPage() {
               });
           }
 
-          // coin animation trigger
           setCoinPulse(true);
           setTimeout(() => setCoinPulse(false), 900);
         }
@@ -154,27 +178,76 @@ export default function WalletPage() {
     };
   }, [user, itemsById]);
 
-  // 🧮 3) Total coins calculate
+  // 3) Total coins calculate
   const totalCoins = useMemo(
     () =>
-      rows.reduce(
-        (sum, r) => sum + (r.coins ? r.coins : 0),
-        0
-      ),
+      rows.reduce((sum, r) => sum + (r.coins ? r.coins : 0), 0),
     [rows]
   );
 
-  // 🧮 4) Simple grouped summary (optional future use)
-  // Abhi sirf total coins hi show karenge clean UI ke liye
+  // 4) Simple toast helper
+  function showToast(message: string) {
+    setToast(message);
+    setTimeout(() => setToast(null), 2200);
+  }
 
-  // 🔐 5) Login required screen
+  // 5) TOP-UP handler (DEV MODE: direct add money)
+  async function handleTopup(amount: number) {
+    if (!user) {
+      showToast("Please log in first.");
+      return;
+    }
+    setTopupLoadingAmount(amount);
+
+    try {
+      // a) topup history me entry daalo
+      const { error: insertError } = await supabase
+        .from("wallet_topups")
+        .insert({
+          user_id: user.id,
+          amount,
+          status: "success",
+          source: "dev-topup", // later: 'cashfree'
+        });
+
+      if (insertError) {
+        console.error(insertError);
+        showToast("Could not add money.");
+        return;
+      }
+
+      // b) wallet balance update karo
+      const newBalance = walletBalance + amount;
+
+      const { data: updated, error: updateError } = await supabase
+        .from("wallets")
+        .update({ balance: newBalance })
+        .eq("user_id", user.id)
+        .select("balance")
+        .maybeSingle();
+
+      if (updateError) {
+        console.error(updateError);
+        showToast("Wallet update failed.");
+        return;
+      }
+
+      setWalletBalance(Number(updated?.balance || newBalance));
+      showToast(`₹${amount} added to your wallet (test mode).`);
+    } finally {
+      setTopupLoadingAmount(null);
+    }
+  }
+
+  // 6) Login required screen
   if (needsLogin) {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col items-center justify-center p-6">
         <div className="max-w-sm text-center">
           <h1 className="text-xl font-semibold">Login required</h1>
           <p className="mt-2 text-sm text-slate-400">
-            Please log in to view your {BRAND.coinName} wallet.
+            Please log in to view your {BRAND.coinName} wallet and rupee
+            balance.
           </p>
 
           <a
@@ -188,9 +261,9 @@ export default function WalletPage() {
     );
   }
 
-  // 🖼 6) MAIN WALLET UI
+  // MAIN UI
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50 pb-10">
+    <div className="min-h-screen bg-slate-950 text-slate-50 pb-14">
       {/* background gradients */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute -left-32 -top-40 h-80 w-80 rounded-full bg-violet-600/25 blur-3xl" />
@@ -211,13 +284,13 @@ export default function WalletPage() {
               {BRAND.name} wallet
             </p>
             <h1 className="text-lg font-semibold text-slate-50">
-              {BRAND.coinName}
+              {BRAND.coinName} & rupee balance
             </h1>
           </div>
         </header>
 
-        {/* balance card */}
-        <section className="mb-6">
+        {/* COINS BALANCE CARD */}
+        <section className="mb-4">
           <div
             className={
               "rounded-3xl border border-emerald-400/40 bg-gradient-to-r from-emerald-600/30 via-emerald-500/20 to-sky-500/20 px-4 py-4 shadow-xl shadow-emerald-900/40 backdrop-blur flex items-center justify-between gap-4 transition-transform " +
@@ -230,26 +303,71 @@ export default function WalletPage() {
               </div>
               <div>
                 <p className="text-[11px] text-emerald-100">
-                  Total balance
+                  Total {BRAND.coinName}
                 </p>
                 <p className="text-2xl font-bold tracking-tight text-emerald-50">
                   {totalCoins}
                 </p>
                 <p className="text-[11px] text-emerald-100/80">
-                  {BRAND.coinName}
+                  Earned from claims
                 </p>
               </div>
             </div>
             <div className="text-right text-[11px] text-emerald-100/80">
-              <p>Auto-updating</p>
-              <p className="mt-1 text-[10px] text-emerald-50/80">
-                New claims instantly appear here.
-              </p>
+              
             </div>
           </div>
         </section>
 
-        {/* history list */}
+        {/* RUPEE WALLET CARD + TOP-UP */}
+        <section className="mb-6">
+          <div className="rounded-3xl border border-slate-800/80 bg-slate-950/80 px-4 py-4 shadow-lg shadow-slate-950/60">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] text-slate-400">
+                  Rupee wallet balance
+                </p>
+                <p className="mt-1 text-2xl font-semibold text-slate-50">
+                  ₹{" "}
+                  {walletLoading
+                    ? "…"
+                    : walletBalance.toFixed(2)}
+                </p>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Use this balance to buy paid drops and unlock
+                  future perks.
+                </p>
+              </div>
+
+              {/* quick top-up buttons (DEV mode) */}
+              <div className="flex flex-col items-end gap-2">
+                <p className="text-[10px] text-slate-500">
+                  Test add money
+                </p>
+                <div className="flex gap-2">
+                  {[10, 50, 100].map((amt) => (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => handleTopup(amt)}
+                      disabled={topupLoadingAmount === amt}
+                      className="rounded-full border border-slate-700/80 bg-slate-900/80 px-3 py-1.5 text-[11px] font-medium text-slate-100 hover:bg-slate-800 disabled:opacity-60"
+                    >
+                      {topupLoadingAmount === amt
+                        ? "Adding…"
+                        : `+₹${amt}`}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[9px] text-slate-500">
+                  Dev mode only – later this will use Cashfree.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* CLAIM HISTORY */}
         <section>
           <h2 className="mb-3 text-sm font-semibold text-slate-100">
             Claim history
@@ -266,8 +384,7 @@ export default function WalletPage() {
             <div className="space-y-2">
               {rows.map((row) => {
                 const item = itemsById[row.item_id];
-                const title =
-                  item?.title || "Claimed item";
+                const title = item?.title || "Claimed item";
                 const coins = row.coins || 0;
                 const date = new Date(
                   row.created_at
@@ -301,6 +418,15 @@ export default function WalletPage() {
           )}
         </section>
       </main>
+
+      {/* simple toast */}
+      {toast && (
+        <div className="fixed bottom-16 inset-x-0 flex justify-center z-50">
+          <div className="rounded-full bg-slate-900/90 px-4 py-2 text-[11px] text-slate-100 border border-slate-700/70 shadow-lg shadow-black/60">
+            {toast}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

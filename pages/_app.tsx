@@ -107,7 +107,7 @@ function Layout({ children }: { children: ReactNode }) {
           </Link>
 
           <Link
-            href="/wallet"
+            href="/wallet-activity"
            className="flex h-10 w-10 items-center justify-center rounded-full
               border border-slate-700/70 bg-slate-900/80 hover:bg-slate-800
               text-[20px] shadow-md shadow-black/30">
@@ -120,7 +120,7 @@ function Layout({ children }: { children: ReactNode }) {
                 border border-slate-700/70 bg-slate-900/80 hover:bg-slate-800
                 text-[22px] shadow-md shadow-black/30">
               🛠️
-          
+
           </Link>
 
           {/* TOP PROFILE ICON → PUBLIC CREATOR PAGE */}
@@ -159,15 +159,21 @@ function Layout({ children }: { children: ReactNode }) {
             }
           >
             <span className="text-lg">◎</span>
-            <span>Wallet</span>
+            <span>work</span>
           </Link>
-
+ {/* BIG PLUS IN THE MIDDLE */}
+    <a
+      href="/create-drop"
+      className="flex h-12 w-12 -translate-y-3 items-center justify-center rounded-full bg-violet-500 text-lg font-bold text-slate-950 shadow-lg shadow-violet-700/60"
+    >
+      +
+    </a>
           {/* creators tab → creator dashboard / studio */}
           <Link
             href="/creator-dashboard"
             className={
               "flex flex-1 flex-col items-center gap-0.5 rounded-2xl px-2 py-1 " +
-              (isActive("/creator-dashboard")
+              (isActive("/creators")
                 ? "text-violet-300"
                 : "text-slate-400")
             }
