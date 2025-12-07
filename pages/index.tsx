@@ -46,8 +46,7 @@ function getLevelFromCoins(coins: number): LevelDef {
 }
 
 export default function HomePage() {
-  const [currentUser, setCurrentUser] = 
-  useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const [needsLogin, setNeedsLogin] = useState(false);
 
   const [items, setItems] = useState<ItemRow[]>([]);
@@ -62,6 +61,10 @@ export default function HomePage() {
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
+  // 🪙 Wallet state (NEW)
+  const [walletBalance, setWalletBalance] = useState<number>(0);
+  const [walletLoading, setWalletLoading] = useState<boolean>(true);
+
   // auto hide toast
   useEffect(() => {
     if (!toast) return;
@@ -75,7 +78,7 @@ export default function HomePage() {
       const { data, error } = await supabase.auth.getUser();
       if (error || !data?.user) {
         setCurrentUser(null);
-        setNeedsLogin(true);
+        setNeedsLogin(true); // show login popup
         return;
       }
       setCurrentUser(data.user);
@@ -83,6 +86,55 @@ export default function HomePage() {
     }
     loadUser();
   }, []);
+
+  // load wallet for current user (NEW)
+  useEffect(() => {
+    async function loadWallet() {
+      if (!currentUser) {
+        setWalletBalance(0);
+        setWalletLoading(false);
+        return;
+      }
+
+      setWalletLoading(true);
+
+      const { data, error } = await supabase
+        .from("wallets")
+        .select("balance")
+        .eq("user_id", currentUser.id)
+        .maybeSingle();
+
+      // PGRST116 = no rows found
+      if (error && (error as any).code !== "PGRST116") {
+        console.error("Wallet load error", error);
+        setWalletBalance(0);
+        setWalletLoading(false);
+        return;
+      }
+
+      if (!data) {
+        // create zero-balance wallet
+        const { data: created, error: createErr } = await supabase
+          .from("wallets")
+          .insert({ user_id: currentUser.id, balance: 0 })
+          .select("balance")
+          .maybeSingle();
+
+        if (createErr) {
+          console.error("Wallet create error", createErr);
+          setWalletBalance(0);
+        } else {
+          setWalletBalance(Number(created?.balance ?? 0));
+        }
+      } else {
+        setWalletBalance(Number((data as any).balance ?? 0));
+      }
+
+      setWalletLoading(false);
+    }
+
+    loadWallet();
+  }, [currentUser]);
 
   // load items
   useEffect(() => {
@@ -117,9 +169,7 @@ export default function HomePage() {
       setClaimsLoading(true);
       const { data, error } = await supabase
         .from("ownerships")
-        .select(
-          "id, created_at, item_id, buyer_id, buyer_name, coins"
-        )
+        .select("id, created_at, item_id, buyer_id, buyer_name, coins")
         .eq("buyer_id", currentUser.id)
         .order("created_at", { ascending: false });
 
@@ -154,33 +204,62 @@ export default function HomePage() {
   }, [items, search]);
 
   async function handleClaim(item: ItemRow) {
+    // 🔐 must be logged in
     if (!currentUser) {
-      setToast("Please log in to claim drops.");
-      return;
-    }
-    if (!viewerIdentity.trim()) {
       setNeedsLogin(true);
       return;
     }
+
+    // viewer name / email required
+    if (!viewerIdentity.trim()) {
+      setToast("Please enter your name or email first.");
+      return;
+    }
+
+    // stock check
     if (!item.stock || item.stock <= 0) {
       setToast("This drop is sold out.");
       return;
     }
 
-    // Paid drop → open Cashfree payment link
-    if (item.is_paid) {
-      if (!item.payment_link) {
-        setToast("Payment link not configured for this paid drop.");
+    const isPaidDrop = !!item.is_paid;
+    const price = item.price || 0;
+
+    // 💸 Paid drop → use wallet balance instead of direct Cashfree
+    if (isPaidDrop) {
+      if (walletLoading) {
+        setToast("Wallet is still loading. Please wait…");
         return;
       }
 
-      if (typeof window !== "undefined") {
-        window.open(item.payment_link, "_blank");
-        const ok = window.confirm(
-          "Cashfree payment page open ho gaya hai. Jab payment complete kar lo, tab yahan OK dabao taki claim & coins mil sake."
+      if (walletBalance < price) {
+        setToast(
+          "Not enough wallet balance. Go to Wallet tab and add money first."
         );
-        if (!ok) return;
+        return;
       }
+
+      // deduct from wallet in DB
+      const newBalance = walletBalance - price;
+
+      const { data: updated, error: walletErr } = await supabase
+        .from("wallets")
+        .update({ balance: newBalance })
+        .eq("user_id", currentUser.id)
+        .select("balance")
+        .maybeSingle();
+
+      if (walletErr) {
+        console.error("Wallet update error", walletErr);
+        setToast("Wallet update failed. Please try again.");
+        return;
+      }
+
+      setWalletBalance(
+        Number(updated && (updated as any).balance != null
+          ? (updated as any).balance
+          : newBalance)
+      );
     }
 
     setClaimingId(item.id);
@@ -196,17 +275,15 @@ export default function HomePage() {
       const prevLevel = getLevelFromCoins(prevCoins);
 
       // 1) insert ownership row
-      const { error: ownError } = await supabase
-        .from("ownerships")
-        .insert({
-          item_id: item.id,
-          buyer_id: currentUser.id,
-          buyer_name: viewerIdentity.trim(),
-          coins,
-        });
+      const { error: ownError } = await supabase.from("ownerships").insert({
+        item_id: item.id,
+        buyer_id: currentUser.id,
+        buyer_name: viewerIdentity.trim(),
+        coins,
+      });
 
       if (ownError) {
-        console.error(ownError);
+        console.error("Ownership insert error", ownError);
         setToast("Error claiming this drop.");
         return;
       }
@@ -224,9 +301,7 @@ export default function HomePage() {
 
       // 3) update local UI
       setItems((prev) =>
-        prev.map((it) =>
-          it.id === item.id ? { ...it, stock: newStock } : it
-        )
+        prev.map((it) => (it.id === item.id ? { ...it, stock: newStock } : it))
       );
       setClaims((prev) => [
         {
@@ -248,9 +323,7 @@ export default function HomePage() {
           `Level up! You are now ${newLevel.name} (${newTotal} ${BRAND.coinName}).`
         );
       } else {
-        setToast(
-          `Claimed "${item.title}" +${coins} ${BRAND.coinName}!`
-        );
+        setToast(`Claimed "${item.title}" +${coins} ${BRAND.coinName}!`);
       }
     } finally {
       setClaimingId(null);
@@ -276,17 +349,25 @@ export default function HomePage() {
               {BRAND.name} Market
             </h1>
           </div>
-          <div className="flex items-center gap-2 text-[11px]">
 
+          {/* Wallet chip (NEW) */}
+          <div className="flex items-center gap-2 text-[11px]">
+            <a
+              href="/wallet"
+              className="rounded-2xl border border-slate-800 bg-slate-950/80 px-3 py-1.5 text-right"
+            >
+              <div className="text-[10px] text-slate-400">Wallet balance</div>
+              <div className="text-xs font-semibold text-emerald-300">
+                {walletLoading ? "…" : `₹${walletBalance.toFixed(2)}`}
+              </div>
+            </a>
           </div>
         </header>
 
         {/* identity + level card */}
         <section className="mb-4 space-y-3">
           <div className="space-y-1 text-[11px]">
-            <p className="text-slate-400">
-              Your name / email for claim & coins
-            </p>
+            <p className="text-slate-400">Your name / email for claim & coins</p>
             <input
               className="w-full rounded-2xl border border-slate-800 bg-slate-950/80 px-3 py-2 text-[11px] text-slate-100 outline-none focus:border-violet-500"
               placeholder="Your name or email"
@@ -306,12 +387,9 @@ export default function HomePage() {
                 </p>
                 <p className="text-[11px] text-slate-300">
                   Level:{" "}
-                  <span className="font-semibold">
-                    {currentLevel.name}
-                  </span>
+                  <span className="font-semibold">{currentLevel.name}</span>
                 </p>
               </div>
-  
             </div>
           </div>
         </section>
@@ -387,16 +465,20 @@ export default function HomePage() {
 
                     <div className="mt-2 flex items-center justify-between">
                       <p className="text-[10px] text-slate-400">
-                        +{item.coins_per_claim || 10}{" "}
-                        {BRAND.coinName} per claim
+                        +{item.coins_per_claim || 10} {BRAND.coinName} per
+                        claim
                       </p>
                       <button
                         onClick={() => handleClaim(item)}
                         disabled={claimingId === item.id}
                         className="rounded-full bg-violet-500 px-3 py-1.5 text-[11px] font-semibold text-slate-950 hover:bg-violet-400 disabled:opacity-60"
                       >
-                        {claimingId === item.id
-                          ? "Claiming…"
+                         {claimingId === item.id
+                          ? item.is_paid
+                            ? "Processing…"
+                            : "Claiming…"
+                          : item.is_paid
+                          ? "Buy & claim"
                           : "Claim ownership"}
                       </button>
                     </div>
@@ -407,14 +489,13 @@ export default function HomePage() {
           )}
         </section>
       </main>
-{/* Login required popup */}
+
+      {/* Login required popup */}
       {needsLogin && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 px-4">
           <div className="w-full max-w-sm rounded-3xl border border-slate-800 bg-slate-950/95 p-4 text-[11px] text-slate-100 shadow-xl shadow-slate-900/80">
-            <p className="text-sm font-semibold mb-1">
-              Login required
-            </p>
-            <p className="text-[11px] text-slate-300 mb-3">
+            <p className="mb-1 text-sm font-semibold">Login required</p>
+            <p className="mb-3 text-[11px] text-slate-300">
               You need to log in to claim drops and earn {BRAND.coinName}.
             </p>
 
