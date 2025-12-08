@@ -1,5 +1,6 @@
 // pages/wallet.tsx
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/router";
 import { supabase } from "../lib/supabaseClient";
 import { BRAND } from "../lib/brand";
 
@@ -18,6 +19,8 @@ type ItemRow = {
 };
 
 export default function WalletPage() {
+  const router = useRouter();
+
   const [user, setUser] = useState<any>(null);
   const [needsLogin, setNeedsLogin] = useState(false);
 
@@ -25,7 +28,7 @@ export default function WalletPage() {
   const [itemsById, setItemsById] = useState<Record<string, ItemRow>>({});
   const [loading, setLoading] = useState(true);
 
-  // 💰 rupee wallet state
+  // rupee wallet state
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [walletLoading, setWalletLoading] = useState(true);
   const [topupLoadingAmount, setTopupLoadingAmount] = useState<number | null>(
@@ -54,7 +57,7 @@ export default function WalletPage() {
       const currentUser = authData.user;
       setUser(currentUser);
 
-      // ---- a) ownerships (coins history) ----
+      // a) ownerships (coins history)
       const { data: ownData, error: ownError } = await supabase
         .from("ownerships")
         .select("id, created_at, item_id, buyer_name, buyer_id, coins")
@@ -90,7 +93,7 @@ export default function WalletPage() {
 
       setLoading(false);
 
-      // ---- b) RUPEE WALLET load ----
+      // b) rupee wallet load
       const { data: walletRow, error: walletError } = await supabase
         .from("wallets")
         .select("balance")
@@ -180,8 +183,7 @@ export default function WalletPage() {
 
   // 3) Total coins calculate
   const totalCoins = useMemo(
-    () =>
-      rows.reduce((sum, r) => sum + (r.coins ? r.coins : 0), 0),
+    () => rows.reduce((sum, r) => sum + (r.coins ? r.coins : 0), 0),
     [rows]
   );
 
@@ -207,7 +209,7 @@ export default function WalletPage() {
           user_id: user.id,
           amount,
           status: "success",
-          source: "dev-topup", // later: 'cashfree'
+          source: "dev-topup", // later: "cashfree"
         });
 
       if (insertError) {
@@ -313,9 +315,7 @@ export default function WalletPage() {
                 </p>
               </div>
             </div>
-            <div className="text-right text-[11px] text-emerald-100/80">
-              
-            </div>
+            <div className="text-right text-[11px] text-emerald-100/80"></div>
           </div>
         </section>
 
@@ -329,9 +329,7 @@ export default function WalletPage() {
                 </p>
                 <p className="mt-1 text-2xl font-semibold text-slate-50">
                   ₹{" "}
-                  {walletLoading
-                    ? "…"
-                    : walletBalance.toFixed(2)}
+                  {walletLoading ? "…" : walletBalance.toFixed(2)}
                 </p>
                 <p className="mt-1 text-[11px] text-slate-500">
                   Use this balance to buy paid drops and unlock
@@ -360,7 +358,7 @@ export default function WalletPage() {
                   ))}
                 </div>
                 <p className="text-[9px] text-slate-500">
-                  Dev mode only – later this will use Cashfree.
+                  Dev mode only - later this will use Cashfree.
                 </p>
               </div>
             </div>
@@ -369,15 +367,24 @@ export default function WalletPage() {
 
         {/* CLAIM HISTORY */}
         <section>
-          <h2 className="mb-3 text-sm font-semibold text-slate-100">
-            Claim history
-          </h2>
+          {/* clickable header to go to full history page */}
+          <div
+            className="mb-3 flex items-center justify-between cursor-pointer"
+            onClick={() => router.push("/history")}
+          >
+            <h2 className="text-sm font-semibold text-slate-100">
+              Claim history
+            </h2>
+            <span className="text-[11px] text-violet-400">
+              View full history ›
+            </span>
+          </div>
 
           {loading ? (
             <p className="text-xs text-slate-400">Loading…</p>
           ) : rows.length === 0 ? (
             <p className="text-xs text-slate-400">
-              You haven&apos;t claimed anything yet. Go to the home
+              You have not claimed anything yet. Go to the home
               page and claim your first drop to earn coins.
             </p>
           ) : (
@@ -386,9 +393,7 @@ export default function WalletPage() {
                 const item = itemsById[row.item_id];
                 const title = item?.title || "Claimed item";
                 const coins = row.coins || 0;
-                const date = new Date(
-                  row.created_at
-                ).toLocaleString();
+                const date = new Date(row.created_at).toLocaleString();
 
                 return (
                   <div

@@ -168,8 +168,8 @@ function Layout({ children }: { children: ReactNode }) {
               (isActive("/wallet") ? "text-violet-300" : "text-slate-400")
             }
           >
-            <span className="text-lg">◎</span>
-            <span>work</span>
+            <span className="text-lg">💲</span>
+            <span>Earn</span>
           </Link>
  {/* BIG PLUS IN THE MIDDLE */}
     <a
@@ -180,7 +180,7 @@ function Layout({ children }: { children: ReactNode }) {
     </a>
           {/* creators tab → creator dashboard / studio */}
           <Link
-            href="/creator-dashboard"
+            href="/creators"
             className={
               "flex flex-1 flex-col items-center gap-0.5 rounded-2xl px-2 py-1 " +
               (isActive("/creators")

@@ -45,6 +45,13 @@ function getLevelFromCoins(coins: number): LevelDef {
   return current;
 }
 
+function formatCount(n: number | null | undefined): string {
+  const num = n || 0;
+  if (num >= 1_000_000) return (num / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M";
+  if (num >= 1_000) return (num / 1_000).toFixed(1).replace(/\.0$/, "") + "K";
+  return String(num);
+}
+
 export default function HomePage() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [needsLogin, setNeedsLogin] = useState(false);
@@ -55,7 +62,6 @@ export default function HomePage() {
   const [claims, setClaims] = useState<ClaimRow[]>([]);
   const [claimsLoading, setClaimsLoading] = useState(true);
 
-  const [viewerIdentity, setViewerIdentity] = useState("");
   const [search, setSearch] = useState("");
 
   const [claimingId, setClaimingId] = useState<string | null>(null);
@@ -64,12 +70,16 @@ export default function HomePage() {
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [walletLoading, setWalletLoading] = useState<boolean>(true);
 
+  // total claims per drop (all users)
+  const [claimCounts, setClaimCounts] = useState<Record<string, number>>({});
+
   useEffect(() => {
     if (!toast) return;
     const id = setTimeout(() => setToast(null), 3000);
     return () => clearTimeout(id);
   }, [toast]);
 
+  // user
   useEffect(() => {
     async function loadUser() {
       const { data, error } = await supabase.auth.getUser();
@@ -84,6 +94,7 @@ export default function HomePage() {
     loadUser();
   }, []);
 
+  // wallet (not shown, only for paid drops)
   useEffect(() => {
     async function loadWallet() {
       if (!currentUser) {
@@ -130,6 +141,7 @@ export default function HomePage() {
     loadWallet();
   }, [currentUser]);
 
+  // items
   useEffect(() => {
     async function loadItems() {
       setItemsLoading(true);
@@ -151,6 +163,7 @@ export default function HomePage() {
     loadItems();
   }, []);
 
+  // current user claims (for coins + “owned” state)
   useEffect(() => {
     async function loadClaims() {
       if (!currentUser) {
@@ -176,6 +189,27 @@ export default function HomePage() {
     loadClaims();
   }, [currentUser]);
 
+  // total claims per drop (all users)
+  useEffect(() => {
+    async function loadClaimCounts() {
+      const { data, error } = await supabase
+        .from("ownerships")
+        .select("item_id");
+
+      if (error) {
+        console.error("Claim counts error", error);
+        return;
+      }
+
+      const map: Record<string, number> = {};
+      (data as { item_id: string }[]).forEach((row) => {
+        map[row.item_id] = (map[row.item_id] || 0) + 1;
+      });
+      setClaimCounts(map);
+    }
+    loadClaimCounts();
+  }, []);
+
   const totalCoins = useMemo(
     () => claims.reduce((sum, c) => sum + (c.coins || 0), 0),
     [claims]
@@ -183,6 +217,11 @@ export default function HomePage() {
   const currentLevel = useMemo(
     () => getLevelFromCoins(totalCoins),
     [totalCoins]
+  );
+
+  const ownedIds = useMemo(
+    () => new Set(claims.map((c) => c.item_id)),
+    [claims]
   );
 
   const filteredItems = useMemo(() => {
@@ -198,11 +237,6 @@ export default function HomePage() {
   async function handleClaim(item: ItemRow) {
     if (!currentUser) {
       setNeedsLogin(true);
-      return;
-    }
-
-    if (!viewerIdentity.trim()) {
-      setToast("Please enter your name or email first.");
       return;
     }
 
@@ -263,10 +297,15 @@ export default function HomePage() {
       const prevCoins = totalCoins;
       const prevLevel = getLevelFromCoins(prevCoins);
 
+      const buyerName =
+        currentUser.user_metadata?.full_name ||
+        currentUser.email ||
+        currentUser.id;
+
       const { error: ownError } = await supabase.from("ownerships").insert({
         item_id: item.id,
         buyer_id: currentUser.id,
-        buyer_name: viewerIdentity.trim(),
+        buyer_name: buyerName,
         coins,
       });
 
@@ -286,20 +325,29 @@ export default function HomePage() {
         console.error(stockErr);
       }
 
+      // update local items
       setItems((prev) =>
         prev.map((it) => (it.id === item.id ? { ...it, stock: newStock } : it))
       );
+
+      // update local claims for current user
       setClaims((prev) => [
         {
           id: Math.random().toString(36).slice(2),
           created_at: new Date().toISOString(),
           item_id: item.id,
           buyer_id: currentUser.id,
-          buyer_name: viewerIdentity.trim(),
+          buyer_name: buyerName,
           coins,
         },
         ...prev,
       ]);
+
+      // update total claim count
+      setClaimCounts((prev) => ({
+        ...prev,
+        [item.id]: (prev[item.id] || 0) + 1,
+      }));
 
       const newTotal = prevCoins + coins;
       const newLevel = getLevelFromCoins(newTotal);
@@ -318,67 +366,31 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-[#050816] text-slate-50 flex flex-col">
-      {/* background glow */}
+      {/* subtle bg */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute -left-40 -top-40 h-80 w-80 rounded-full bg-violet-600/25 blur-3xl" />
         <div className="absolute right-[-40px] bottom-[-80px] h-80 w-80 rounded-full bg-sky-500/20 blur-3xl" />
       </div>
 
-      {/* top bar */}
-      <header className="relative z-20 sticky top-0 flex items-center justify-between px-4 py-3 bg-[#050816]/90 backdrop-blur border-b border-slate-900">
-        <button className="h-10 w-10 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-lg">
-          ☰
-        </button>
-
-        <div className="flex flex-col items-center">
-          <span className="text-sm font-semibold tracking-wide">Genstrok</span>
-          <span className="mt-0.5 text-[10px] px-2 py-0.5 rounded-full bg-slate-900 text-slate-400 border border-slate-800">
-            Powered by Protera
-          </span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <TopIcon>🔔</TopIcon>
-          <TopIcon>🔎</TopIcon>
-          <TopIcon>🤝</TopIcon>
-        </div>
-      </header>
-
-      {/* main scroll */}
-      <main className="relative z-10 flex-1 overflow-y-auto px-4 pt-4 pb-24">
+      <main className="relative z-10 flex-1 overflow-y-auto px-4 pt-4 pb-8">
         <div className="mx-auto w-full max-w-2xl space-y-4">
-          {/* identity + wallet */}
+          {/* top summary */}
           <section className="space-y-3">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">
-                  Live prototype v0.1
+                  Genstrok
                 </p>
                 <p className="text-sm font-semibold text-slate-50">
-                  {BRAND.name} Home
+                  Creator ownership home
                 </p>
               </div>
-              <a
-                href="/wallet"
-                className="rounded-2xl border border-slate-800 bg-slate-950/80 px-3 py-1.5 text-right text-[11px]"
-              >
-                <div className="text-[10px] text-slate-400">Wallet balance</div>
-                <div className="text-xs font-semibold text-emerald-300">
-                  {walletLoading ? "…" : `₹${walletBalance.toFixed(2)}`}
-                </div>
-              </a>
-            </div>
-
-            <div className="space-y-2 text-[11px]">
-              <p className="text-slate-400">
-                Your name or email for claim and coins
-              </p>
-              <input
-                className="w-full rounded-2xl border border-slate-800 bg-slate-950/80 px-3 py-2 text-[11px] text-slate-100 outline-none focus:border-violet-500"
-                placeholder="Your name or email"
-                value={viewerIdentity}
-                onChange={(e) => setViewerIdentity(e.target.value)}
-              />
+              <div className="text-right text-[11px]">
+                <p className="text-[10px] text-slate-400">Level</p>
+                <p className="text-xs font-semibold text-emerald-300">
+                  {currentLevel.name}
+                </p>
+              </div>
             </div>
 
             <div className="flex flex-col gap-3 text-[11px] sm:flex-row">
@@ -386,15 +398,9 @@ export default function HomePage() {
                 <p className="text-[11px] text-slate-200">
                   Your total {BRAND.coinName}
                 </p>
-                <div className="mt-1 flex items-baseline justify-between">
-                  <p className="text-2xl font-semibold text-emerald-300">
-                    {claimsLoading ? "…" : totalCoins}
-                  </p>
-                  <p className="text-[11px] text-slate-300">
-                    Level:{" "}
-                    <span className="font-semibold">{currentLevel.name}</span>
-                  </p>
-                </div>
+                <p className="mt-1 text-2xl font-semibold text-emerald-300">
+                  {claimsLoading ? "…" : totalCoins}
+                </p>
               </div>
             </div>
           </section>
@@ -413,7 +419,7 @@ export default function HomePage() {
           </section>
 
           {/* feed */}
-          <section className="pb-2">
+          <section>
             <h2 className="mb-2 text-sm font-semibold text-slate-100">
               Live drops
             </h2>
@@ -426,151 +432,112 @@ export default function HomePage() {
               </p>
             ) : (
               <div className="space-y-4">
-                {filteredItems.map((item) => (
-                  <article
-                    key={item.id}
-                    className="bg-slate-900/70 border border-slate-800 rounded-3xl p-3 space-y-3 shadow-lg shadow-slate-950/60"
-                  >
-                    {/* thumbnail */}
-                    <div className="relative overflow-hidden rounded-2xl h-48">
-                      {item.cover_url ? (
-                        <img
-                          src={item.cover_url}
-                          alt={item.title}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center bg-slate-900 text-xs text-slate-500">
-                          No image
-                        </div>
-                      )}
+                {filteredItems.map((item) => {
+                  const totalClaims = claimCounts[item.id] || 0;
+                  const owned = ownedIds.has(item.id);
 
-                      <div className="absolute left-2 top-2 flex gap-2">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-950/80 text-slate-50 border border-slate-700">
-                          ₹{item.price}
-                        </span>
-                        {item.is_paid && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-400 text-amber-950">
-                            Paid drop
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="absolute right-2 top-2">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/90 text-emerald-950">
-                          Stock {item.stock}
-                        </span>
-                      </div>
-
-                      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-[#050816]/90 to-transparent" />
-                    </div>
-
-                    {/* title + creator */}
-                    <div className="flex items-start gap-2">
-                      <div className="flex-1">
-                        <div className="flex items-start justify-between gap-2">
-                          <h3 className="text-sm font-semibold leading-snug line-clamp-2">
-                            {item.title}
-                          </h3>
-                          <button className="shrink-0 text-slate-500 text-lg px-1">
-                            ⋮
-                          </button>
-                        </div>
-                        <div className="mt-2 flex items-center text-[11px] text-slate-400 gap-2">
-                          <div className="h-6 w-6 rounded-full bg-slate-800 flex items-center justify-center text-[9px]">
-                            {item.creator_name
-                              ? item.creator_name.charAt(0).toUpperCase()
-                              : "C"}
-                          </div>
-                          <span className="truncate max-w-[140px]">
-                            {item.creator_name || "Creator"}
-                          </span>
-                          <span className="h-1 w-1 rounded-full bg-slate-500" />
-                          <span>Drop</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* VIEWS / LIKES / CLAIMS row (UI only, static for now) */}
-                    <div className="flex items-center justify-between text-[11px] text-slate-400">
-                      <Stat label="VIEWS" value="3.2M" icon="👁" />
-                      <Stat label="LIKES" value="22K" icon="★" />
-                      <Stat label="CLAIMS" value="3.1K" icon="💎" />
-                    </div>
-
-                    {/* Stock / coins / price row */}
-                    <div className="flex items-center justify-between text-[11px] text-slate-400">
-                      <Stat
-                        label="STOCK LEFT"
-                        value={String(item.stock)}
-                        icon="📦"
-                      />
-                      <Stat
-                        label={BRAND.coinName.toUpperCase()}
-                        value={`+${item.coins_per_claim || 10}`}
-                        icon="💠"
-                      />
-                      <Stat
-                        label="PRICE"
-                        value={item.is_paid ? `₹${item.price}` : "Free"}
-                        icon="💰"
-                      />
-                    </div>
-
-                    {/* actions */}
-                    <div className="flex items-center gap-2 mt-1">
-                      <button
-                        onClick={() => handleClaim(item)}
-                        disabled={claimingId === item.id}
-                        className="flex-1 h-10 rounded-full bg-violet-600 text-xs font-semibold flex items-center justify-center shadow-lg shadow-violet-500/40 disabled:opacity-60"
+                  return (
+                    <article
+                      key={item.id}
+                      className="bg-slate-900/70 border border-slate-800 rounded-3xl p-3 space-y-3 shadow-lg shadow-slate-950/60"
+                    >
+                      {/* thumbnail */}
+                      <a
+                        href={`/drop/${item.id}`}
+                        className="block overflow-hidden rounded-2xl h-48"
                       >
-                        {claimingId === item.id
-                          ? item.is_paid
-                            ? "Processing…"
-                            : "Claiming…"
-                          : item.is_paid
-                          ? "Buy and claim"
-                          : "Claim ownership"}
-                      </button>
-                      <button className="h-10 px-4 rounded-full border border-slate-700 text-[11px] text-slate-300">
-                        View details
-                      </button>
-                    </div>
+                        {item.cover_url ? (
+                          <img
+                            src={item.cover_url}
+                            alt={item.title}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center bg-slate-900 text-xs text-slate-500">
+                            No image
+                          </div>
+                        )}
+                      </a>
 
-                    <p className="text-[10px] text-slate-500 mt-1">
-                      Earn {item.coins_per_claim || 10} {BRAND.coinName} per
-                      claim
-                    </p>
-                  </article>
-                ))}
+                      {/* title + creator */}
+                      <div className="flex items-start gap-2">
+                        <div className="flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <h3 className="text-sm font-semibold leading-snug line-clamp-2">
+                              {item.title}
+                            </h3>
+                            {owned && (
+                              <span className="shrink-0 rounded-full bg-emerald-500/20 border border-emerald-500/60 px-2 py-0.5 text-[9px] text-emerald-200">
+                                Owned
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-2 flex items-center text-[11px] text-slate-400 gap-2">
+                            <div className="h-6 w-6 rounded-full bg-slate-800 flex items-center justify-center text-[9px]">
+                              {item.creator_name
+                                ? item.creator_name.charAt(0).toUpperCase()
+                                : "C"}
+                            </div>
+                            <span className="truncate max-w-[140px]">
+                              {item.creator_name || "Creator"}
+                            </span>
+                            <span className="h-1 w-1 rounded-full bg-slate-500" />
+                            <span>Drop</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* stats */}
+                      <div className="flex items-center justify-between text-[11px] text-slate-400">
+                        <Stat label="VIEWS" value="3.2M" icon="👁" />
+                        <Stat
+                          label="LIKES"
+                          value="22K"
+                          icon="★"
+                        />
+                        <Stat
+                          label="CLAIMS"
+                          value={formatCount(totalClaims)}
+                          icon="💎"
+                        />
+                      </div>
+
+                      {/* CTAs */}
+                      <div className="flex items-center gap-2 mt-1">
+                        <button
+                          onClick={() => handleClaim(item)}
+                          disabled={claimingId === item.id}
+                          className="flex-1 h-10 rounded-full bg-violet-600 text-xs font-semibold flex items-center justify-center shadow-lg shadow-violet-500/40 disabled:opacity-60"
+                        >
+                          {claimingId === item.id
+                            ? item.is_paid
+                              ? "Processing…"
+                              : "Claiming…"
+                            : item.is_paid
+                            ? "Buy and claim"
+                            : "Claim ownership"}
+                        </button>
+                        <a
+                          href={`/drop/${item.id}`}
+                          className="h-10 px-4 rounded-full border border-slate-700 text-[11px] text-slate-300 flex items-center justify-center"
+                        >
+                          View details
+                        </a>
+                      </div>
+
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        Earn {item.coins_per_claim || 10} {BRAND.coinName} per
+                        claim
+                      </p>
+                    </article>
+                  );
+                })}
               </div>
             )}
           </section>
         </div>
       </main>
 
-      {/* bottom nav */}
-      <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-800 bg-[#050816]/95 backdrop-blur px-4 py-2">
-        <div className="flex items-center justify-between">
-          <BottomNavItem label="Home" active>
-            🏠
-          </BottomNavItem>
-          <BottomNavItem label="Work">
-            💼
-          </BottomNavItem>
-          <button className="h-12 w-12 rounded-full bg-violet-600 text-white flex items-center justify-center text-2xl -mt-6 shadow-xl shadow-violet-500/50">
-            +
-          </button>
-          <BottomNavItem label="Creators">
-            👥
-          </BottomNavItem>
-          <BottomNavItem label="Top">
-            🏆
-          </BottomNavItem>
-        </div>
-      </nav>
-
-      {/* login popup */}
       {needsLogin && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 px-4">
           <div className="w-full max-w-sm rounded-3xl border border-slate-800 bg-slate-950/95 p-4 text-[11px] text-slate-100 shadow-xl shadow-slate-900/80">
@@ -601,74 +568,14 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* toast */}
       {toast && (
-        <div className="fixed inset-x-0 bottom-20 z-30 flex justify-center px-4">
+        <div className="fixed inset-x-0 bottom-4 z-30 flex justify-center px-4">
           <div className="max-w-sm rounded-2xl border border-emerald-500/60 bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-200 shadow-lg shadow-emerald-900/40">
             {toast}
           </div>
         </div>
       )}
     </div>
-  );
-}
-
-/* small components */
-
-function TopIcon({ children }: { children: React.ReactNode }) {
-  return (
-    <button className="h-9 w-9 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-base">
-      {children}
-    </button>
-  );
-}
-
-function BottomNavItem({
-  children,
-  label,
-  href,
-  active,
-}: {
-  children: React.ReactNode;
-  label: string;
-  href?: string;
-  active?: boolean;
-}) {
-  const contents = (
-    <>
-      <div
-        className={
-          "h-8 w-8 rounded-full flex items-center justify-center text-lg " +
-          (active
-            ? "bg-violet-600 text-white"
-            : "bg-slate-900 text-slate-400 border border-slate-800")
-        }
-      >
-        {children}
-      </div>
-      <span
-        className={
-          "text-[11px] " +
-          (active ? "text-slate-50 font-medium" : "text-slate-400")
-        }
-      >
-        {label}
-      </span>
-    </>
-  );
-
-  if (href) {
-    return (
-      <a href={href} className="flex flex-col items-center gap-0.5 flex-1">
-        {contents}
-      </a>
-    );
-  }
-
-  return (
-    <button className="flex flex-col items-center gap-0.5 flex-1">
-      {contents}
-    </button>
   );
 }
 
