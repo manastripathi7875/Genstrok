@@ -114,6 +114,16 @@ function Layout({ children }: { children: ReactNode }) {
             ◎
           </Link>
 
+           <Link
+            href="pages/searchbar.tsx"
+           className="flex h-10 w-10 items-center justify-center rounded-full
+              border border-slate-700/70 bg-slate-900/80 hover:bg-slate-800
+              text-[20px] shadow-md shadow-black/30">
+            🔍
+          </Link>
+
+
+
           <Link
             href="/admin"
             className="flex h-10 w-10 items-center justify-center rounded-full
