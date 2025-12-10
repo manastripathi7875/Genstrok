@@ -1,24 +1,28 @@
+// pages/index.tsx
+
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { BRAND } from "../lib/brand";
 
 type ItemRow = {
-  id: string;
+  id: number;
   title: string;
-  price: number;
-  stock: number;
-  cover_url: string | null;
-  creator_name: string | null;
-  creator_id: string | null;
+  price?: number | null;
+  stock?: number | null;
+  remaining?: number | null;
+  cover_url?: string | null;
+  creator_name?: string | null;
+  creator_user_id?: string | null;
   is_paid?: boolean | null;
   payment_link?: string | null;
   coins_per_claim?: number | null;
+  is_published?: boolean | null;
 };
 
 type ClaimRow = {
   id: string;
   created_at: string;
-  item_id: string;
+  item_id: number;
   buyer_id: string;
   buyer_name: string | null;
   coins: number | null;
@@ -47,8 +51,10 @@ function getLevelFromCoins(coins: number): LevelDef {
 
 function formatCount(n: number | null | undefined): string {
   const num = n || 0;
-  if (num >= 1_000_000) return (num / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M";
-  if (num >= 1_000) return (num / 1_000).toFixed(1).replace(/\.0$/, "") + "K";
+  if (num >= 1_000_000)
+    return (num / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M";
+  if (num >= 1_000)
+    return (num / 1_000).toFixed(1).replace(/\.0$/, "") + "K";
   return String(num);
 }
 
@@ -62,16 +68,14 @@ export default function HomePage() {
   const [claims, setClaims] = useState<ClaimRow[]>([]);
   const [claimsLoading, setClaimsLoading] = useState(true);
 
-  const [search, setSearch] = useState("");
-
-  const [claimingId, setClaimingId] = useState<string | null>(null);
+  const [claimingId, setClaimingId] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [walletLoading, setWalletLoading] = useState<boolean>(true);
 
-  // total claims per drop (all users)
-  const [claimCounts, setClaimCounts] = useState<Record<string, number>>({});
+  // total claims per drop
+  const [claimCounts, setClaimCounts] = useState<Record<number, number>>({});
 
   useEffect(() => {
     if (!toast) return;
@@ -94,7 +98,7 @@ export default function HomePage() {
     loadUser();
   }, []);
 
-  // wallet (not shown, only for paid drops)
+  // wallet
   useEffect(() => {
     async function loadWallet() {
       if (!currentUser) {
@@ -147,23 +151,27 @@ export default function HomePage() {
       setItemsLoading(true);
       const { data, error } = await supabase
         .from("items")
-        .select(
-          "id, title, price, stock, cover_url, creator_name, creator_id, is_paid, payment_link, coins_per_claim"
-        )
+        .select("*")
         .order("created_at", { ascending: false });
 
       if (error) {
-        console.error(error);
+        console.error("items error", error);
         setItems([]);
       } else {
-        setItems((data || []) as ItemRow[]);
+        const raw = (data || []) as any[];
+        const publishedOnly = raw.filter(
+          (row) =>
+            row.is_published === true ||
+            typeof row.is_published === "undefined"
+        );
+        setItems(publishedOnly as ItemRow[]);
       }
       setItemsLoading(false);
     }
     loadItems();
   }, []);
 
-  // current user claims (for coins + “owned” state)
+  // current user claims
   useEffect(() => {
     async function loadClaims() {
       if (!currentUser) {
@@ -179,17 +187,17 @@ export default function HomePage() {
         .order("created_at", { ascending: false });
 
       if (error) {
-        console.error(error);
+        console.error("claims error", error);
         setClaims([]);
       } else {
-        setClaims((data || []) as ClaimRow[]);
+        setClaims((data || []) as any as ClaimRow[]);
       }
       setClaimsLoading(false);
     }
     loadClaims();
   }, [currentUser]);
 
-  // total claims per drop (all users)
+  // total claims per drop
   useEffect(() => {
     async function loadClaimCounts() {
       const { data, error } = await supabase
@@ -201,8 +209,8 @@ export default function HomePage() {
         return;
       }
 
-      const map: Record<string, number> = {};
-      (data as { item_id: string }[]).forEach((row) => {
+      const map: Record<number, number> = {};
+      (data as { item_id: number }[]).forEach((row) => {
         map[row.item_id] = (map[row.item_id] || 0) + 1;
       });
       setClaimCounts(map);
@@ -224,23 +232,15 @@ export default function HomePage() {
     [claims]
   );
 
-  const filteredItems = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter((it) => {
-      const t = it.title?.toLowerCase() || "";
-      const c = it.creator_name?.toLowerCase() || "";
-      return t.includes(q) || c.includes(q);
-    });
-  }, [items, search]);
-
   async function handleClaim(item: ItemRow) {
     if (!currentUser) {
       setNeedsLogin(true);
       return;
     }
 
-    if (!item.stock || item.stock <= 0) {
+    const stock = item.stock ?? 0;
+    const left = item.remaining ?? stock;
+    if (!left || left <= 0) {
       setToast("This drop is sold out.");
       return;
     }
@@ -315,22 +315,22 @@ export default function HomePage() {
         return;
       }
 
-      const newStock = (item.stock || 0) - 1;
+      const newRemaining = left - 1;
       const { error: stockErr } = await supabase
         .from("items")
-        .update({ stock: newStock })
+        .update({ remaining: newRemaining })
         .eq("id", item.id);
 
       if (stockErr) {
-        console.error(stockErr);
+        console.error("remaining update error", stockErr);
       }
 
-      // update local items
       setItems((prev) =>
-        prev.map((it) => (it.id === item.id ? { ...it, stock: newStock } : it))
+        prev.map((it) =>
+          it.id === item.id ? { ...it, remaining: newRemaining } : it
+        )
       );
 
-      // update local claims for current user
       setClaims((prev) => [
         {
           id: Math.random().toString(36).slice(2),
@@ -343,7 +343,6 @@ export default function HomePage() {
         ...prev,
       ]);
 
-      // update total claim count
       setClaimCounts((prev) => ({
         ...prev,
         [item.id]: (prev[item.id] || 0) + 1,
@@ -405,18 +404,7 @@ export default function HomePage() {
             </div>
           </section>
 
-          {/* search */}
-          <section>
-            <div className="flex items-center gap-2 rounded-2xl border border-slate-900 bg-slate-950/80 px-4 py-3 text-[11px]">
-              <span className="text-slate-500">🔍</span>
-              <input
-                className="flex-1 bg-transparent text-[11px] text-slate-100 outline-none"
-                placeholder="Search drops by title or creator"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-          </section>
+          {/* search section removed intentionally – global search icon opens /searchbar */}
 
           {/* feed */}
           <section>
@@ -426,15 +414,17 @@ export default function HomePage() {
 
             {itemsLoading ? (
               <p className="text-xs text-slate-400">Loading drops…</p>
-            ) : filteredItems.length === 0 ? (
+            ) : items.length === 0 ? (
               <p className="text-xs text-slate-400">
                 No drops yet. Add some from the admin panel.
               </p>
             ) : (
               <div className="space-y-4">
-                {filteredItems.map((item) => {
+                {items.map((item) => {
                   const totalClaims = claimCounts[item.id] || 0;
                   const owned = ownedIds.has(item.id);
+                  const stock = item.stock ?? 0;
+                  const left = item.remaining ?? stock;
 
                   return (
                     <article
@@ -474,9 +464,9 @@ export default function HomePage() {
                           </div>
                           <div className="mt-2 flex items-center text-[11px] text-slate-400 gap-2">
                             <div className="h-6 w-6 rounded-full bg-slate-800 flex items-center justify-center text-[9px]">
-                              {item.creator_name
-                                ? item.creator_name.charAt(0).toUpperCase()
-                                : "C"}
+                              {(item.creator_name || "C")
+                                .charAt(0)
+                                .toUpperCase()}
                             </div>
                             <span className="truncate max-w-[140px]">
                               {item.creator_name || "Creator"}
@@ -490,11 +480,7 @@ export default function HomePage() {
                       {/* stats */}
                       <div className="flex items-center justify-between text-[11px] text-slate-400">
                         <Stat label="VIEWS" value="3.2M" icon="👁" />
-                        <Stat
-                          label="LIKES"
-                          value="22K"
-                          icon="★"
-                        />
+                        <Stat label="LIKES" value="22K" icon="★" />
                         <Stat
                           label="CLAIMS"
                           value={formatCount(totalClaims)}
@@ -506,13 +492,15 @@ export default function HomePage() {
                       <div className="flex items-center gap-2 mt-1">
                         <button
                           onClick={() => handleClaim(item)}
-                          disabled={claimingId === item.id}
+                          disabled={claimingId === item.id || !left || left <= 0}
                           className="flex-1 h-10 rounded-full bg-violet-600 text-xs font-semibold flex items-center justify-center shadow-lg shadow-violet-500/40 disabled:opacity-60"
                         >
                           {claimingId === item.id
                             ? item.is_paid
                               ? "Processing…"
                               : "Claiming…"
+                            : !left || left <= 0
+                            ? "Sold out"
                             : item.is_paid
                             ? "Buy and claim"
                             : "Claim ownership"}
@@ -526,6 +514,11 @@ export default function HomePage() {
                       </div>
 
                       <p className="text-[10px] text-slate-500 mt-1">
+                        Stock left{" "}
+                        <span className="font-semibold text-slate-200">
+                          {left} / {stock}
+                        </span>
+                        {" • "}
                         Earn {item.coins_per_claim || 10} {BRAND.coinName} per
                         claim
                       </p>

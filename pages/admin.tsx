@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
-
+import Link from "next/link";
 type ItemRow = {
   id: string;
   title: string;
@@ -186,6 +186,7 @@ export default function AdminPage() {
   }
 
   return (
+
     <div className="min-h-screen bg-slate-950 text-slate-50 pb-12">
       <main className="mx-auto max-w-5xl p-6">
         {/* top bar */}
@@ -230,6 +231,8 @@ export default function AdminPage() {
               />
             </div>
 
+
+            
             <div>
               <p className="label-primary">Stock</p>
               <input
@@ -292,6 +295,25 @@ export default function AdminPage() {
             </div>
           </div>
 
+          <div className="mb-4 rounded-2xl border border-slate-800 bg-slate-950 p-4 text-xs text-slate-200">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <div className="text-sm font-semibold">Brand story broadcast</div>
+                <div className="text-[11px] text-slate-400 mt-1">
+                  Yahan se app ke logo pe protocol stories, big announcements aur
+                  important updates publish karoge. Ye WhatsApp status nahi hai, sirf
+                  high signal cheeze daalna.
+                </div>
+              </div>
+              <Link
+                href="/admin/brand-story"
+                className="shrink-0 rounded-full bg-violet-500 px-3 py-1.5 text-[11px] font-semibold text-slate-950"
+              >
+                Open editor
+              </Link>
+            </div>
+          </div>
+          
           <div className="mt-4 flex gap-2">
             <button
               onClick={handleSave}
