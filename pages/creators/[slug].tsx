@@ -54,11 +54,11 @@ export default function CreatorDetail() {
   const [editMode, setEditMode] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
 
-  // full-screen drop action sheet state
+  // full screen drop action sheet state
   const [activeMenuItem, setActiveMenuItem] = useState<ItemRow | null>(null);
   const [deleteLoadingId, setDeleteLoadingId] = useState<string | null>(null);
 
-  // 1) Logged-in user
+  // 1) Logged in user
   useEffect(() => {
     async function loadUser() {
       const { data, error } = await supabase.auth.getUser();
@@ -161,7 +161,7 @@ export default function CreatorDetail() {
   const displayName = profile?.display_name || creatorSlug || "Creator";
   const displayBio = profile?.bio || `Early creator on ${BRAND.name}.`;
 
-  // 4) Who can edit?
+  // 4) Who can edit
   const canEdit =
     !!currentUser && (!!creatorId ? creatorId === currentUser.id : true);
 
@@ -197,7 +197,7 @@ export default function CreatorDetail() {
     setSavingProfile(false);
   }
 
-  // 6) Drop-level actions used by bottom sheet
+  // 6) Drop level actions used by bottom sheet
 
   function closeSheet() {
     setActiveMenuItem(null);
@@ -214,12 +214,12 @@ export default function CreatorDetail() {
   }
 
   function handlePinDrop(id: string) {
-    console.log("Pin/unpin drop (needs DB column):", id);
+    console.log("Pin or unpin drop, needs DB column", id);
     closeSheet();
   }
 
   function handleVisibilityDrop(id: string) {
-    console.log("Toggle public/private (needs DB column):", id);
+    console.log("Toggle public or private, needs DB column", id);
     closeSheet();
   }
 
@@ -236,7 +236,7 @@ export default function CreatorDetail() {
 
       if (error) {
         console.error("Delete drop error", error);
-        alert("Failed to delete drop. Check console/logs.");
+        alert("Failed to delete drop. Check console or logs.");
         return;
       }
 
@@ -303,17 +303,30 @@ export default function CreatorDetail() {
           </div>
 
           {canEdit && (
-            <button
-              type="button"
-              onClick={() => setEditMode((v) => !v)}
-              className="rounded-full border border-violet-500/70 bg-slate-950/80 px-3 py-1 text-[11px] text-violet-200"
-            >
-              {editMode ? "Close" : "Edit profile"}
-            </button>
+            <div className="flex items-center gap-2">
+              {/* Edit profile button, old behavior same */}
+              <button
+                type="button"
+                onClick={() => setEditMode((v) => !v)}
+                className="rounded-full border border-violet-500/70 bg-slate-950/80 px-3 py-1 text-[11px] text-violet-200"
+              >
+                {editMode ? "Close" : "Edit profile"}
+              </button>
+
+              {/* New drawer icon for settings */}
+              <button
+                type="button"
+                onClick={() => router.push("/creator-settings")}
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-700/80 bg-slate-950/80 text-[15px] text-slate-200"
+                aria-label="Creator settings"
+              >
+                ☰
+              </button>
+            </div>
           )}
         </section>
 
-        {/* inline edit form – creator only */}
+        {/* inline edit form creator only */}
         {canEdit && editMode && (
           <section className="mb-4 rounded-3xl border border-slate-800/80 bg-slate-950/90 p-4">
             <h2 className="mb-3 text-sm font-semibold text-slate-100">
@@ -444,7 +457,7 @@ export default function CreatorDetail() {
                     key={item.id}
                     className="relative flex flex-col overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-950/80"
                   >
-                    {/* three-dot icon */}
+                    {/* three dot icon */}
                     {isOwner && (
                       <div className="absolute right-1 top-1 z-20">
                         <button
@@ -494,7 +507,7 @@ export default function CreatorDetail() {
         </section>
       </main>
 
-      {/* FULL SCREEN GLASSMORPHISM ACTION SHEET */}
+      {/* full screen action sheet */}
       {canEdit && activeMenuItem && (
         <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/60 backdrop-blur-sm">
           {/* tap to close area */}
@@ -574,7 +587,7 @@ export default function CreatorDetail() {
                 className="flex w-full items-center justify-between rounded-2xl bg-slate-900/70 px-4 py-3 text-slate-100 border border-slate-700/70 active:scale-[0.99]"
               >
                 <div className="flex flex-col text-left">
-                  <span className="font-semibold">Public / private</span>
+                  <span className="font-semibold">Public or private</span>
                   <span className="text-[11px] text-slate-400">
                     Toggle visibility on the market
                   </span>

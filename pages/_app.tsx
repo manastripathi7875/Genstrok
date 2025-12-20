@@ -4,7 +4,7 @@ import type { AppProps } from "next/app";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { BRAND } from "../lib/brand";
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useBrandStory } from "../lib/useBrandStory";
 import { BrandStoryModal } from "../components/BrandStoryModal";
@@ -33,9 +33,6 @@ function Layout({ children }: { children: ReactNode }) {
             ? rawEmail.split("@")[0]
             : rawEmail;
 
-          // final display name used for:
-          // - top-right initial
-          // - profile slug (/creators/<name>)
           const displayName =
             meta.full_name || meta.name || emailName || null;
 
@@ -66,7 +63,6 @@ function Layout({ children }: { children: ReactNode }) {
       const slug = encodeURIComponent(profileName);
       router.push(`/creators/${slug}`);
     } else {
-      // no user / no name – send to creator onboarding
       router.push("/creator-dashboard");
     }
   };
@@ -75,6 +71,63 @@ function Layout({ children }: { children: ReactNode }) {
     path.startsWith("/auth") ||
     path.startsWith("/admin") ||
     path.startsWith("/api");
+
+  // ---------- SCROLL HIDE/SHOW LOGIC FOR BOTTOM NAV ----------
+  const [bottomHiddenByScroll, setBottomHiddenByScroll] = useState(false);
+  const lastScrollY = useRef(0);
+  const ticking = useRef(false);
+  const THRESHOLD = 10; // minimum pixels movement to consider
+  const MIN_SHOW_AT = 50; // don't hide when near top
+
+  useEffect(() => {
+    // if route already hides bottom nav, ensure visible state not used
+    if (hideBottomNav) {
+      setBottomHiddenByScroll(false);
+      return;
+    }
+
+    lastScrollY.current = window.scrollY || 0;
+
+    const onScroll = () => {
+      if (ticking.current) return;
+      ticking.current = true;
+      window.requestAnimationFrame(() => {
+        const currentY = window.scrollY || 0;
+        const delta = currentY - lastScrollY.current;
+
+        // If user opens FAB, keep nav visible
+        if (fabOpen) {
+          setBottomHiddenByScroll(false);
+          lastScrollY.current = currentY;
+          ticking.current = false;
+          return;
+        }
+
+        // if near top, always show
+        if (currentY <= MIN_SHOW_AT) {
+          setBottomHiddenByScroll(false);
+        } else if (Math.abs(delta) > THRESHOLD) {
+          if (delta > 0) {
+            // scrolling down -> hide
+            setBottomHiddenByScroll(true);
+          } else {
+            // scrolling up -> show
+            setBottomHiddenByScroll(false);
+          }
+        }
+        lastScrollY.current = currentY;
+        ticking.current = false;
+      });
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+    };
+  }, [hideBottomNav, fabOpen]);
+
+  // Ensure nav is visible when route requires hideBottomNav false -> handled in render
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col pb-24">
@@ -93,7 +146,6 @@ function Layout({ children }: { children: ReactNode }) {
             }}
             className="relative flex h-10 w-10 items-center justify-center rounded-full bg-slate-900"
           >
-            {/* ring around logo - always visible if story_active, pulse only if unread */}
             {settings?.story_active && (
               <span
                 className={
@@ -105,7 +157,6 @@ function Layout({ children }: { children: ReactNode }) {
               />
             )}
 
-            {/* inner logo */}
             <div className="relative h-8 w-8 rounded-full overflow-hidden bg-violet-600 flex items-center justify-center">
               {logoUrl ? (
                 <img
@@ -147,7 +198,7 @@ function Layout({ children }: { children: ReactNode }) {
             className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-700/70 bg-slate-900/80 hover:bg-slate-800 text-base shadow-md shadow-black/30"
           >
             <span role="img" aria-label="wallet">
-              ◎
+              💰
             </span>
           </Link>
 
@@ -174,7 +225,15 @@ function Layout({ children }: { children: ReactNode }) {
 
       {/* BOTTOM NAV + FAB */}
       {!hideBottomNav && (
-        <footer className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-800/80 bg-slate-950/95 px-4 py-1.5 backdrop-blur">
+        <footer
+          aria-hidden={bottomHiddenByScroll}
+          className={
+            "fixed inset-x-0 bottom-0 z-40 border-t border-slate-800/80 bg-slate-950/95 px-4 py-1.5 backdrop-blur transition-transform duration-300 ease-in-out " +
+            (bottomHiddenByScroll
+              ? "translate-y-full pointer-events-none"
+              : "translate-y-0")
+          }
+        >
           <div className="relative mx-auto flex max-w-md items-center justify-between text-[11px]">
             {/* Home */}
             <Link
@@ -223,10 +282,10 @@ function Layout({ children }: { children: ReactNode }) {
 
             {/* Top */}
             <Link
-              href="/top"
+              href="/leaderboard"
               className={
                 "flex flex-1 flex-col items-center gap-0.5 rounded-2xl px-2 py-1 " +
-                (isActive("/top")
+                (isActive("/leaderboard")
                   ? "text-violet-300"
                   : "text-slate-400 hover:text-slate-100")
               }

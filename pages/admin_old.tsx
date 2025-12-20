@@ -232,7 +232,7 @@ export default function AdminPage() {
             </div>
 
 
-            
+
             <div>
               <p className="label-primary">Stock</p>
               <input
@@ -313,7 +313,7 @@ export default function AdminPage() {
               </Link>
             </div>
           </div>
-          
+
           <div className="mt-4 flex gap-2">
             <button
               onClick={handleSave}

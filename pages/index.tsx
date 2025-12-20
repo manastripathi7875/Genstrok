@@ -17,6 +17,7 @@ type ItemRow = {
   payment_link?: string | null;
   coins_per_claim?: number | null;
   is_published?: boolean | null;
+  created_at?: string | null;
 };
 
 type ClaimRow = {
@@ -58,6 +59,14 @@ function formatCount(n: number | null | undefined): string {
   return String(num);
 }
 
+type EnrichedItem = ItemRow & {
+  totalClaims: number;
+  popularityScore: number;
+  isNew: boolean;
+  isEndingSoon: boolean;
+  remaining: number; // clamped
+};
+
 export default function HomePage() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [needsLogin, setNeedsLogin] = useState(false);
@@ -74,7 +83,6 @@ export default function HomePage() {
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [walletLoading, setWalletLoading] = useState<boolean>(true);
 
-  // total claims per drop
   const [claimCounts, setClaimCounts] = useState<Record<number, number>>({});
 
   useEffect(() => {
@@ -151,8 +159,25 @@ export default function HomePage() {
       setItemsLoading(true);
       const { data, error } = await supabase
         .from("items")
-        .select("*")
-        .order("created_at", { ascending: false });
+        .select(
+          `
+          id,
+          title,
+          price,
+          stock,
+          remaining,
+          cover_url,
+          creator_name,
+          creator_user_id,
+          is_paid,
+          payment_link,
+          coins_per_claim,
+          is_published,
+          created_at
+        `
+        )
+        .order("created_at", { ascending: false })
+        .limit(48);
 
       if (error) {
         console.error("items error", error);
@@ -232,6 +257,96 @@ export default function HomePage() {
     [claims]
   );
 
+  // enrich items
+  const enrichedItems: EnrichedItem[] = useMemo(() => {
+    const now = Date.now();
+
+    return items.map((item) => {
+      const totalClaims = claimCounts[item.id] || 0;
+
+      let recencyBoost = 0;
+      if (item.created_at) {
+        const createdTime = new Date(item.created_at).getTime();
+        const diffHours = (now - createdTime) / (1000 * 60 * 60);
+        if (diffHours <= 24) recencyBoost = 20;
+        else if (diffHours <= 72) recencyBoost = 10;
+      }
+
+      const popularityScore = totalClaims * 3 + recencyBoost;
+
+      const stock = item.stock ?? 0;
+      let remaining = item.remaining ?? stock;
+      if (stock > 0 && remaining > stock) remaining = stock;
+      if (remaining < 0) remaining = 0;
+
+      const isEndingSoon =
+        stock > 0 && remaining >= 0 && remaining / stock <= 0.2;
+
+      const isNew =
+        item.created_at &&
+        (now - new Date(item.created_at).getTime()) /
+          (1000 * 60 * 60) <=
+          48;
+
+      return {
+        ...item,
+        totalClaims,
+        popularityScore,
+        isNew: !!isNew,
+        isEndingSoon,
+        remaining,
+      };
+    });
+  }, [items, claimCounts]);
+
+  // sections
+  const { featured, trending, newDrops, discover } = useMemo(() => {
+    const sortedByScore = [...enrichedItems].sort(
+      (a, b) => b.popularityScore - a.popularityScore
+    );
+
+    const featured = sortedByScore.slice(0, 2);
+    const featuredIds = new Set(featured.map((i) => i.id));
+
+    const trending = enrichedItems
+      .filter(
+        (i) =>
+          !featuredIds.has(i.id) && i.totalClaims > 0 && i.popularityScore > 0
+      )
+      .sort((a, b) => b.popularityScore - a.popularityScore)
+      .slice(0, 8);
+
+    const ftIds = new Set<number>([
+      ...featuredIds,
+      ...trending.map((i) => i.id),
+    ]);
+
+    const newDrops = enrichedItems
+      .filter((i) => !ftIds.has(i.id) && i.isNew)
+      .sort((a, b) => {
+        const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return tb - ta;
+      })
+      .slice(0, 8);
+
+    const ftnIds = new Set<number>([
+      ...ftIds,
+      ...newDrops.map((i) => i.id),
+    ]);
+
+    const discover = enrichedItems
+      .filter((i) => !ftnIds.has(i.id))
+      .sort((a, b) => {
+        const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return tb - ta;
+      })
+      .slice(0, 8);
+
+    return { featured, trending, newDrops, discover };
+  }, [enrichedItems]);
+
   async function handleClaim(item: ItemRow) {
     if (!currentUser) {
       setNeedsLogin(true);
@@ -239,7 +354,10 @@ export default function HomePage() {
     }
 
     const stock = item.stock ?? 0;
-    const left = item.remaining ?? stock;
+    let left = item.remaining ?? stock;
+    if (stock > 0 && left > stock) left = stock;
+    if (left < 0) left = 0;
+
     if (!left || left <= 0) {
       setToast("This drop is sold out.");
       return;
@@ -311,7 +429,7 @@ export default function HomePage() {
 
       if (ownError) {
         console.error("Ownership insert error", ownError);
-        setToast("Error claiming this drop.");
+        setToast("Error claiming this asset.");
         return;
       }
 
@@ -372,7 +490,7 @@ export default function HomePage() {
       </div>
 
       <main className="relative z-10 flex-1 overflow-y-auto px-4 pt-4 pb-8">
-        <div className="mx-auto w-full max-w-2xl space-y-4">
+        <div className="mx-auto w-full max-w-2xl space-y-5">
           {/* top summary */}
           <section className="space-y-3">
             <div className="flex items-center justify-between">
@@ -392,140 +510,156 @@ export default function HomePage() {
               </div>
             </div>
 
-            <div className="flex flex-col gap-3 text-[11px] sm:flex-row">
-              <div className="flex-1 rounded-3xl border border-slate-800 bg-gradient-to-r from-violet-600/40 via-indigo-600/30 to-sky-500/25 px-4 py-3 shadow-lg shadow-violet-900/40">
+            <div className="grid grid-cols-2 gap-3 text-[11px]">
+              <div className="rounded-3xl border border-slate-800 bg-gradient-to-r from-violet-600/40 via-indigo-600/30 to-sky-500/25 px-4 py-3 shadow-lg shadow-violet-900/40">
                 <p className="text-[11px] text-slate-200">
                   Your total {BRAND.coinName}
                 </p>
                 <p className="mt-1 text-2xl font-semibold text-emerald-300">
                   {claimsLoading ? "…" : totalCoins}
                 </p>
+                <p className="mt-1 text-[10px] text-slate-300">
+                  Own more assets to climb levels.
+                </p>
+              </div>
+
+              <div className="rounded-3xl border border-slate-800 bg-slate-900/70 px-4 py-3 shadow-lg shadow-slate-950/60 flex flex-col justify-between">
+                <div>
+                  <p className="text-[11px] text-slate-300">Wallet balance</p>
+                  <p className="mt-1 text-xl font-semibold text-sky-300">
+                    {walletLoading ? "…" : walletBalance}
+                  </p>
+                </div>
+                <p className="mt-1 text-[10px] text-slate-400">
+                  Use balance to enter paid drops.
+                </p>
               </div>
             </div>
           </section>
 
-          {/* search section removed intentionally – global search icon opens /searchbar */}
-
-          {/* feed */}
-          <section>
-            <h2 className="mb-2 text-sm font-semibold text-slate-100">
-              Live drops
-            </h2>
+          {/* feed root */}
+          <section className="space-y-5">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-slate-100">
+                Live asset marketplace
+              </h2>
+              <p className="text-[10px] text-slate-400">
+                {items.length} active assets
+              </p>
+            </div>
 
             {itemsLoading ? (
-              <p className="text-xs text-slate-400">Loading drops…</p>
-            ) : items.length === 0 ? (
+              <p className="text-xs text-slate-400">Loading assets…</p>
+            ) : enrichedItems.length === 0 ? (
               <p className="text-xs text-slate-400">
-                No drops yet. Add some from the admin panel.
+                No assets yet. Add some from the admin panel.
               </p>
             ) : (
-              <div className="space-y-4">
-                {items.map((item) => {
-                  const totalClaims = claimCounts[item.id] || 0;
-                  const owned = ownedIds.has(item.id);
-                  const stock = item.stock ?? 0;
-                  const left = item.remaining ?? stock;
-
-                  return (
-                    <article
-                      key={item.id}
-                      className="bg-slate-900/70 border border-slate-800 rounded-3xl p-3 space-y-3 shadow-lg shadow-slate-950/60"
-                    >
-                      {/* thumbnail */}
-                      <a
-                        href={`/drop/${item.id}`}
-                        className="block overflow-hidden rounded-2xl h-48"
-                      >
-                        {item.cover_url ? (
-                          <img
-                            src={item.cover_url}
-                            alt={item.title}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center bg-slate-900 text-xs text-slate-500">
-                            No image
-                          </div>
-                        )}
-                      </a>
-
-                      {/* title + creator */}
-                      <div className="flex items-start gap-2">
-                        <div className="flex-1">
-                          <div className="flex items-start justify-between gap-2">
-                            <h3 className="text-sm font-semibold leading-snug line-clamp-2">
-                              {item.title}
-                            </h3>
-                            {owned && (
-                              <span className="shrink-0 rounded-full bg-emerald-500/20 border border-emerald-500/60 px-2 py-0.5 text-[9px] text-emerald-200">
-                                Owned
-                              </span>
-                            )}
-                          </div>
-                          <div className="mt-2 flex items-center text-[11px] text-slate-400 gap-2">
-                            <div className="h-6 w-6 rounded-full bg-slate-800 flex items-center justify-center text-[9px]">
-                              {(item.creator_name || "C")
-                                .charAt(0)
-                                .toUpperCase()}
-                            </div>
-                            <span className="truncate max-w-[140px]">
-                              {item.creator_name || "Creator"}
-                            </span>
-                            <span className="h-1 w-1 rounded-full bg-slate-500" />
-                            <span>Drop</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* stats */}
-                      <div className="flex items-center justify-between text-[11px] text-slate-400">
-                        <Stat label="VIEWS" value="3.2M" icon="👁" />
-                        <Stat label="LIKES" value="22K" icon="★" />
-                        <Stat
-                          label="CLAIMS"
-                          value={formatCount(totalClaims)}
-                          icon="💎"
-                        />
-                      </div>
-
-                      {/* CTAs */}
-                      <div className="flex items-center gap-2 mt-1">
-                        <button
-                          onClick={() => handleClaim(item)}
-                          disabled={claimingId === item.id || !left || left <= 0}
-                          className="flex-1 h-10 rounded-full bg-violet-600 text-xs font-semibold flex items-center justify-center shadow-lg shadow-violet-500/40 disabled:opacity-60"
-                        >
-                          {claimingId === item.id
-                            ? item.is_paid
-                              ? "Processing…"
-                              : "Claiming…"
-                            : !left || left <= 0
-                            ? "Sold out"
-                            : item.is_paid
-                            ? "Buy and claim"
-                            : "Claim ownership"}
-                        </button>
-                        <a
-                          href={`/drop/${item.id}`}
-                          className="h-10 px-4 rounded-full border border-slate-700 text-[11px] text-slate-300 flex items-center justify-center"
-                        >
-                          View details
-                        </a>
-                      </div>
-
-                      <p className="text-[10px] text-slate-500 mt-1">
-                        Stock left{" "}
-                        <span className="font-semibold text-slate-200">
-                          {left} / {stock}
-                        </span>
-                        {" • "}
-                        Earn {item.coins_per_claim || 10} {BRAND.coinName} per
-                        claim
+              <>
+                {/* Featured horizontal rail */}
+                {featured.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[11px] font-semibold text-slate-200">
+                        Featured and trending
                       </p>
-                    </article>
-                  );
-                })}
-              </div>
+                      <p className="text-[10px] text-slate-500">
+                        Highest activity right now
+                      </p>
+                    </div>
+                    <div className="flex gap-3 overflow-x-auto pb-1 snap-x snap-mandatory">
+                      {featured.map((item) => (
+                        <div
+                          key={item.id}
+                          className="w-[68%] min-w-[68%] sm:w-[55%] sm:min-w-[55%]"
+                        >
+                          <DropCard
+                            item={item}
+                            owned={ownedIds.has(item.id)}
+                            claimingId={claimingId}
+                            onClaim={handleClaim}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Trending grid */}
+                {trending.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[11px] font-semibold text-slate-200">
+                        Trending now
+                      </p>
+                      <p className="text-[10px] text-slate-500">
+                        Most claimed assets
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                      {trending.map((item) => (
+                        <DropCard
+                          key={item.id}
+                          item={item}
+                          owned={ownedIds.has(item.id)}
+                          claimingId={claimingId}
+                          onClaim={handleClaim}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* New drops */}
+                {newDrops.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[11px] font-semibold text-slate-200">
+                        Fresh drops
+                      </p>
+                      <p className="text-[10px] text-slate-500">
+                        Added in last 48 hours
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                      {newDrops.map((item) => (
+                        <DropCard
+                          key={item.id}
+                          item={item}
+                          owned={ownedIds.has(item.id)}
+                          claimingId={claimingId}
+                          onClaim={handleClaim}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Discover lane */}
+                {discover.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[11px] font-semibold text-slate-200">
+                        Discover more
+                      </p>
+                      <p className="text-[10px] text-slate-500">
+                        Hidden assets that need attention
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                      {discover.map((item) => (
+                        <DropCard
+                          key={item.id}
+                          item={item}
+                          owned={ownedIds.has(item.id)}
+                          claimingId={claimingId}
+                          onClaim={handleClaim}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </section>
         </div>
@@ -536,7 +670,7 @@ export default function HomePage() {
           <div className="w-full max-w-sm rounded-3xl border border-slate-800 bg-slate-950/95 p-4 text-[11px] text-slate-100 shadow-xl shadow-slate-900/80">
             <p className="mb-1 text-sm font-semibold">Login required</p>
             <p className="mb-3 text-[11px] text-slate-300">
-              You need to log in to claim drops and earn {BRAND.coinName}.
+              You need to log in to claim assets and earn {BRAND.coinName}.
             </p>
 
             <div className="flex justify-end gap-2">
@@ -572,20 +706,184 @@ export default function HomePage() {
   );
 }
 
-function Stat({
-  label,
-  value,
-  icon,
+function DropCard({
+  item,
+  owned,
+  claimingId,
+  onClaim,
 }: {
-  label: string;
-  value: string;
-  icon: string;
+  item: EnrichedItem;
+  owned: boolean;
+  claimingId: number | null;
+  onClaim: (item: ItemRow) => void;
 }) {
+  const stock = item.stock ?? 0;
+  let left = item.remaining;
+  if (stock > 0 && left > stock) left = stock;
+  if (left < 0) left = 0;
+
+  const isPaid = !!item.is_paid;
+  const price = item.price || 0;
+  const coins = item.coins_per_claim || 10;
+
+  const isTrending = item.totalClaims >= 3 && item.popularityScore >= 30;
+
+  // price label: rupees for paid, "Free" for free
+  const priceLabel = isPaid ? `₹${price}` : "Free";
+
+  // badges: max 2
+  const badges: { key: string; label: string; emoji: string; className: string }[] = [];
+  if (isTrending) {
+    badges.push({
+      key: "trending",
+      label: "Trending",
+      emoji: "🔥",
+      className: "bg-orange-500/90 text-slate-950",
+    });
+  }
+  if (item.isEndingSoon) {
+    badges.push({
+      key: "ending",
+      label: "Ending soon",
+      emoji: "⏳",
+      className: "bg-amber-400/90 text-slate-950",
+    });
+  }
+  if (item.isNew) {
+    badges.push({
+      key: "new",
+      label: "New",
+      emoji: "🆕",
+      className: "bg-sky-500/90 text-slate-950",
+    });
+  }
+  const limitedBadges = badges.slice(0, 2);
+
+  const ownersText =
+    item.totalClaims === 0
+      ? "Be the first owner"
+      : `${formatCount(item.totalClaims)} owners`;
+
+  const leftText =
+    stock === 0
+      ? "Unlimited"
+      : left <= 0
+      ? "Sold out"
+      : `${left} left`;
+
   return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-xs">{icon}</span>
-      <span className="text-[10px] uppercase tracking-wide">{label}</span>
-      <span className="text-[11px] text-slate-200 font-medium">{value}</span>
-    </div>
+    <article className="group relative flex flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/70 shadow-lg shadow-slate-950/60 snap-start">
+      {/* image section */}
+      <a href={`/drop/${item.id}`} className="block relative">
+        <div className="relative aspect-[4/5] w-full overflow-hidden bg-slate-900">
+          {item.cover_url ? (
+            <img
+              src={item.cover_url}
+              alt={item.title}
+              loading="lazy"
+              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-slate-500 text-xs">
+              No image
+            </div>
+          )}
+
+          {/* gradient */}
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/10 to-transparent" />
+
+          {/* top badges */}
+          {limitedBadges.length > 0 && (
+            <div className="absolute top-2 left-2 right-2 flex items-center justify-between gap-1 text-[9px]">
+              <div className="flex gap-1.5">
+                {limitedBadges.map((b) => (
+                  <span
+                    key={b.key}
+                    className={`rounded-full px-2 py-0.5 font-semibold ${b.className}`}
+                  >
+                    {b.emoji} {b.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* bottom creator strip */}
+          <div className="absolute left-2 right-2 bottom-2 flex items-center justify-between gap-1 text-[9px] text-slate-200">
+            <div className="flex items-center gap-1.5">
+              <div className="h-6 w-6 rounded-full bg-slate-800 flex items-center justify-center text-[9px]">
+                {(item.creator_name || "C").charAt(0).toUpperCase()}
+              </div>
+              <span className="truncate max-w-[100px]">
+                {item.creator_name || "Creator"}
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              {stock > 0 && (
+                <span className="rounded-full bg-slate-900/80 px-2 py-0.5">
+                  {leftText}
+                </span>
+              )}
+              <span className="rounded-full bg-violet-600/80 px-2 py-0.5 font-semibold">
+                {priceLabel}
+              </span>
+            </div>
+          </div>
+        </div>
+      </a>
+
+      {/* info + actions */}
+      <div className="flex flex-1 flex-col px-2.5 pt-2 pb-2.5 space-y-1.5">
+        <div className="flex items-start gap-1.5">
+          <h3 className="flex-1 text-[12px] font-semibold leading-snug line-clamp-2">
+            {item.title}
+          </h3>
+          {owned && (
+            <span className="shrink-0 rounded-full bg-emerald-500/20 border border-emerald-500/60 px-2 py-0.5 text-[9px] text-emerald-200">
+              Owned
+            </span>
+          )}
+        </div>
+
+        <div className="text-[10px] text-slate-400">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs">💎</span>
+            <span className="truncate">
+              {ownersText} · +{coins} {BRAND.coinName} · {leftText}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between text-[10px] text-slate-400">
+          <span className="rounded-full bg-slate-800/80 px-2 py-0.5">
+            {isPaid ? "Paid asset" : "Reward asset"}
+          </span>
+        </div>
+
+        <div className="mt-1 flex items-center gap-1.5">
+          <button
+            onClick={() => onClaim(item)}
+            disabled={claimingId === item.id || !left || left <= 0}
+            className="flex-1 h-8 rounded-full bg-violet-600 text-[10px] font-semibold flex items-center justify-center shadow-lg shadow-violet-500/40 disabled:opacity-60"
+          >
+            {claimingId === item.id
+              ? isPaid
+                ? "Processing…"
+                : "Claiming…"
+              : !left || left <= 0
+              ? "Sold out"
+              : isPaid
+              ? "Buy and claim"
+              : "Claim ownership"}
+          </button>
+          <a
+            href={`/drop/${item.id}`}
+            className="h-8 px-3 rounded-full border border-slate-700 text-[10px] text-slate-300 flex items-center justify-center"
+          >
+            Details
+          </a>
+        </div>
+      </div>
+    </article>
   );
 }

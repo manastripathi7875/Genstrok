@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../lib/supabaseClient";
-import { BRAND } from "../lib/brand";
+
 
 type CartRow = {
   id: number;

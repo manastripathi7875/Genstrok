@@ -21,18 +21,6 @@ localPort = 3000
 localPort = 5000
 externalPort = 80
 
-[[ports]]
-localPort = 39383
-externalPort = 3001
-
-[[ports]]
-localPort = 40845
-externalPort = 3000
-
-[[ports]]
-localPort = 40863
-externalPort = 3002
-
 [agent]
 expertMode = true
 
@@ -59,3 +47,8 @@ waitForPort = 5000
 
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[userenv]
+
+[userenv.shared]
+ADMIN_API_KEY = "GS_ADMIN_KEY_91A2F7C9B1_GENSTROK_SECURE_2025"

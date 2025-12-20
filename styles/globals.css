@@ -1,4 +1,39 @@
 @import "tailwindcss";
+/* styles/globals.css -- append near top or merge with your existing vars */
+
+/* default looks for dark */
+:root {
+  --bg: #02040a; /* dark base */
+  --surface: #071024;
+  --text: #e6eef8;
+  --muted: #98a3b3;
+  --accent: #9b6cff;
+}
+
+/* light theme overrides */
+html[data-theme="light"], .light-theme {
+  --bg: #f7f8fb;
+  --surface: #ffffff;
+  --text: #0f1724;
+  --muted: #6b7280;
+  --accent: #6b21a8;
+}
+
+html[data-theme="dark"], .dark-theme {
+  --bg: #02040a;
+  --surface: #071024;
+  --text: #e6eef8;
+  --muted: #98a3b3;
+  --accent: #9b6cff;
+}
+
+/* helper classes you used in _app */
+.bg-theme { background: var(--bg); }
+.text-theme { color: var(--text); }
+.surface { background: var(--surface); }
+
+/* small tweaks for buttons */
+button { cursor: pointer; }
 
 * {
   box-sizing: border-box;
@@ -26,3 +61,4 @@ body {
 .textarea-primary {
   @apply w-full rounded-2xl border border-slate-700/70 bg-slate-950/90 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500;
 }
+
