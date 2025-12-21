@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { BRAND } from "../lib/brand";
-
+import { insertLedgerEntry } from "../lib/ledger";
 type ItemRow = {
   id: number;
   title: string;
@@ -426,7 +426,14 @@ export default function HomePage() {
         buyer_name: buyerName,
         coins,
       });
-
+console.log("ledger insert user", currentUser.id);
+      await insertLedgerEntry({
+        user_id: currentUser.id,
+        source_type: "ownership",
+        source_id: String(item.id), // force string
+        points: coins,
+      });
+      
       if (ownError) {
         console.error("Ownership insert error", ownError);
         setToast("Error claiming this asset.");

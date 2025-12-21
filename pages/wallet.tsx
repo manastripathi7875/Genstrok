@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../lib/supabaseClient";
 import { BRAND } from "../lib/brand";
-
+import { insertLedgerEntry } from "../lib/ledger";
 type OwnershipRow = {
   id: string;
   created_at: string;
@@ -646,13 +646,18 @@ export default function WalletPage() {
           reward_rupees: task.reward_rupees,
           reward_coins: 0,
         });
-
       if (insertError) {
         console.error(insertError);
         showToast("Could not complete brand task.");
         return;
       }
-
+      await insertLedgerEntry({
+        user_id: user.id,
+        source_type: "brand_task",
+        source_id: String(task.id),
+        points: task.reward_rupees,
+        weight: 2,
+      });
       const newBalance = walletBalance + task.reward_rupees;
 
       const { data: updated, error: walletErr } = await supabase
