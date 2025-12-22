@@ -1,267 +1,250 @@
 // pages/auth.tsx
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { BRAND } from "../lib/brand";
 
+type Mode = "login" | "signup" | "phone";
+
 export default function AuthPage() {
-  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [refCode, setRefCode] = useState("");
-  const [rememberMe, setRememberMe] = useState(true);
+  const [phone, setPhone] = useState("");
+  const [otp, setOtp] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // if already logged in — redirect out
-  useEffect(() => {
-    let mounted = true;
-    async function check() {
-      const { data } = await supabase.auth.getUser();
-      if (!mounted) return;
-      if (data?.user && typeof window !== "undefined") {
-        window.location.href = "/";
-      }
-    }
-    check();
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  // small helper to show messages
-  function showMessage(text: string, timeout = 3500) {
+  function toast(text: string, t = 4500) {
     setMsg(text);
-    setTimeout(() => setMsg(null), timeout);
+    setTimeout(() => setMsg(null), t);
   }
 
-  // handle login or signup submit
-  async function handleSubmit(e: React.FormEvent) {
+  /* ================= EMAIL LOGIN / SIGNUP ================= */
+  async function handleEmail(e: React.FormEvent) {
     e.preventDefault();
-    setMsg(null);
     setLoading(true);
+    setMsg(null);
 
     try {
       if (mode === "login") {
-        const { data, error } = await supabase.auth.signInWithPassword({
+        const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
 
         if (error) {
-          setMsg(error.message || "Login failed");
-        } else {
-          // login successful — session is stored by supabase client
-          showMessage("Logged in. Redirecting…", 1200);
-          if (typeof window !== "undefined") {
-            window.location.href = "/";
-          }
-        }
-      } else {
-        // signup
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-        });
-
-        if (error) {
-          setMsg(error.message || "Sign up failed");
+          toast("Account not found. Create one to continue.");
+          setMode("signup");
           return;
         }
 
-        // handle referral credit if code provided
-        // if signUp returned a user (session) -> immediate credit
-        // if signUp requires email confirmation, still attempt to link the referral by inserting referral_uses row server-side later.
-        const userId = data?.user?.id ?? null;
-
-        if (refCode && refCode.trim().length > 0) {
-          try {
-            // find referrer by code
-            const { data: refRow, error: refErr } = await supabase
-              .from("referrals")
-              .select("referrer_id")
-              .eq("code", refCode.trim())
-              .maybeSingle();
-
-            if (refErr) {
-              // non-fatal: show message but continue
-              console.error("Referral lookup error", refErr);
-              showMessage("Signup OK — referral lookup failed (debug).");
-            } else if (!refRow) {
-              showMessage("Signup OK — referral code not found.");
-            } else if (userId) {
-              // we have the newly created user id, call server RPC to credit referrer
-              // rupees/coins set here — change values as required
-              const { error: rpcErr } = await supabase.rpc(
-                "credit_referrer_on_signup",
-                {
-                  referrer: refRow.referrer_id,
-                  referred: userId,
-                  rupees: 10,
-                  coins: 20,
-                }
-              );
-
-              if (rpcErr) {
-                console.error("RPC credit_referrer_on_signup error", rpcErr);
-                showMessage("Signup OK — referral credit failed.");
-              } else {
-                showMessage("Account created — referral reward applied.");
-              }
-            } else {
-              // No immediate user session (email confirm required). Insert a pending referral_uses row so admin or backend can finish credit later.
-              // Try to create a pending row with referred_id = NULL? Better approach: store referral in a pending table OR send to server.
-              // For now, insert into referrals_pending with ref code and email for later processing (create table referrals_pending if needed).
-              try {
-                await supabase.from("referrals_pending").insert({
-                  code: refCode.trim(),
-                  referred_email: email,
-                  created_at: new Date().toISOString(),
-                });
-                showMessage("Signup created. Referral recorded for verification.");
-              } catch (pendErr) {
-                // If table doesn't exist, skip silently
-                console.warn("referrals_pending insert skipped", pendErr);
-                showMessage("Signup OK — please verify email. Referral may be applied later.");
-              }
-            }
-          } catch (ex) {
-            console.error("Referral handling exception", ex);
-            showMessage("Account created — referral handling error (debug).");
-          }
-        } else {
-          // no referral code — simple success path
-          if (userId) {
-            showMessage("Account created. You are logged in — redirecting…", 1200);
-            if (typeof window !== "undefined") {
-              window.location.href = "/";
-            }
-          } else {
-            showMessage(
-              "Account created. Check your email to confirm and then log in."
-            );
-          }
-        }
+        toast("Welcome back 👋");
+        setTimeout(() => (window.location.href = "/"), 700);
+        return;
       }
+
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+
+      if (error) {
+        toast(error.message);
+        return;
+      }
+
+      if (refCode && data?.user?.id) {
+        try {
+          const { data: ref } = await supabase
+            .from("referrals")
+            .select("referrer_id")
+            .eq("code", refCode)
+            .maybeSingle();
+
+          if (ref?.referrer_id) {
+            await supabase.rpc("credit_referrer_on_signup", {
+              referrer: ref.referrer_id,
+              referred: data.user.id,
+              rupees: 10,
+              coins: 20,
+            });
+          }
+        } catch {}
+      }
+
+      toast("Verify your email to continue 🚀", 6000);
     } finally {
       setLoading(false);
     }
   }
 
+  /* ================= GOOGLE ================= */
+  async function google() {
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
+    });
+  }
+
+  /* ================= PHONE ================= */
+  async function sendOtp() {
+    setLoading(true);
+    const { error } = await supabase.auth.signInWithOtp({
+      phone,
+      options: { shouldCreateUser: true },
+    });
+
+    if (error) toast(error.message);
+    else {
+      setOtpSent(true);
+      toast("OTP sent");
+    }
+    setLoading(false);
+  }
+
+  async function verifyOtp(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+
+    const { error } = await supabase.auth.verifyOtp({
+      phone,
+      token: otp,
+      type: "sms",
+    });
+
+    if (error) toast(error.message);
+    else {
+      toast("Verified 🎉");
+      setTimeout(() => (window.location.href = "/"), 700);
+    }
+    setLoading(false);
+  }
+
   return (
-    <div className="min-h-screen bg-[#050816] text-slate-50">
-      <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -left-24 -top-16 h-64 w-64 rounded-full bg-violet-500/20 blur-3xl" />
-        <div className="absolute -right-24 bottom-[-60px] h-64 w-64 rounded-full bg-cyan-500/20 blur-3xl" />
+  <div className="min-h-screen w-full bg-[#06070F] flex items-center justify-center px-4 relative overflow-hidden">
+    {/* BACKGROUND */}
+    <div className="absolute inset-0">
+      <div className="absolute -top-40 -left-40 h-[500px] w-[500px] rounded-full bg-purple-700/25 blur-[120px]" />
+      <div className="absolute bottom-[-200px] right-[-200px] h-[500px] w-[500px] rounded-full bg-fuchsia-600/25 blur-[120px]" />
+      <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/70 to-black/90" />
+    </div>
+
+    {/* AUTH CARD */}
+    <div className="relative z-10 w-full max-w-sm rounded-[28px] border border-white/15 bg-[#0B0E1A]/90 shadow-[0_30px_80px_rgba(0,0,0,0.9)] backdrop-blur-xl px-6 py-7">
+
+      {/* LOGO */}
+      <div className="flex justify-center mb-5">
+        <div className="h-14 w-14 rounded-2xl bg-black/60 flex items-center justify-center text-xl font-bold border border-white/10">
+          {BRAND.shortName || "G"}
+        </div>
       </div>
 
-      <main className="relative mx-auto flex min-h-screen max-w-md flex-col px-4 pb-10 pt-8">
-        <header className="mb-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-900/80 ring-1 ring-slate-700/60">
-              <span className="text-xl font-bold tracking-tight">{BRAND.shortName || BRAND.name?.[0] || "G"}</span>
-            </div>
-            <div>
-              <div className="text-sm font-semibold tracking-tight">{BRAND.name} account</div>
-              <div className="text-[11px] text-slate-400">Log in or sign up to claim drops & earn {BRAND.coinName}.</div>
-            </div>
-          </div>
+      {/* TITLE */}
+      <h1 className="text-center text-2xl font-semibold tracking-tight text-white">
+        {mode === "login" ? "Welcome Back" : "Get Started Free"}
+      </h1>
+      <p className="mt-1 text-center text-sm text-slate-400">
+        {mode === "login" ? "We missed you" : "No credit card required"}
+      </p>
 
-          <a
-            href="/"
-            className="rounded-full border border-slate-700/70 bg-slate-900/60 px-3 py-1.5 text-xs font-medium text-slate-200 shadow-sm shadow-slate-900/40 backdrop-blur"
-          >
-            Back to market
-          </a>
-        </header>
+      {/* FORM */}
+      <div className="mt-6 space-y-3">
+        <input
+          type="email"
+          placeholder="Email address"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="w-full rounded-xl bg-black/50 border border-white/10 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+        />
 
-        <section className="rounded-2xl border border-slate-800/80 bg-slate-900/80 p-6 shadow-lg shadow-slate-950/70">
-          <div className="mb-4 flex items-center justify-between">
-            <h1 className="text-lg font-semibold text-slate-50">{mode === "login" ? "Welcome back" : "Create your Genstrok account"}</h1>
+        <input
+          type="password"
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className="w-full rounded-xl bg-black/50 border border-white/10 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+        />
+
+        {mode === "signup" && (
+          <input
+            type="text"
+            placeholder="Referral code (optional)"
+            value={refCode}
+            onChange={(e) => setRefCode(e.target.value)}
+            className="w-full rounded-xl bg-black/50 border border-white/10 px-4 py-3 text-sm text-white placeholder:text-slate-500"
+          />
+        )}
+
+        {/* CTA */}
+        <button
+          disabled={loading}
+          onClick={handleEmail}
+          className="mt-2 w-full rounded-xl bg-gradient-to-r from-purple-500 via-fuchsia-500 to-pink-500 py-3 text-sm font-semibold text-black shadow-[0_10px_30px_rgba(168,85,247,0.6)] hover:opacity-95 transition"
+        >
+          {mode === "login" ? "Sign in" : "Sign up"}
+        </button>
+      </div>
+
+      {/* DIVIDER */}
+      <div className="my-5 flex items-center gap-2 text-xs text-slate-500">
+        <div className="h-px flex-1 bg-white/10" />
+        or continue with
+        <div className="h-px flex-1 bg-white/10" />
+      </div>
+
+      {/* OAUTH */}
+      <div className="space-y-2">
+        <button
+          onClick={google}
+          className="w-full rounded-xl border border-white/15 bg-black/40 py-3 text-sm text-white hover:bg-black/60 transition"
+        >
+          Continue with Google
+        </button>
+
+        <button
+          onClick={() => setMode("phone")}
+          className="w-full rounded-xl border border-white/15 bg-black/40 py-3 text-sm text-white hover:bg-black/60 transition"
+        >
+          Continue with Phone
+        </button>
+      </div>
+
+      {/* FOOTER */}
+      <div className="mt-6 text-center text-sm text-slate-400">
+        {mode === "login" ? (
+          <>
+            Don’t have an account?{" "}
             <button
-              onClick={() => {
-                setMode(mode === "login" ? "signup" : "login");
-                setMsg(null);
-              }}
-              className="text-[11px] text-violet-300 underline"
-              type="button"
+              onClick={() => setMode("signup")}
+              className="text-purple-400 underline"
             >
-              {mode === "login" ? "Need an account? Sign up" : "Have an account? Log in"}
+              Sign up
             </button>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <div>
-              <label className="mb-1 block text-[11px] text-slate-300">Email</label>
-              <input
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                type="email"
-                placeholder="you@email.com"
-                className="w-full rounded-xl border border-slate-700/70 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500/60"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-[11px] text-slate-300">Password</label>
-              <input
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                type="password"
-                placeholder="Minimum 6 characters"
-                className="w-full rounded-xl border border-slate-700/70 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500/60"
-                required
-              />
-            </div>
-
-            {mode === "signup" && (
-              <div>
-                <label className="mb-1 block text-[11px] text-slate-300">Referral code (optional)</label>
-                <input
-                  value={refCode}
-                  onChange={(e) => setRefCode(e.target.value)}
-                  type="text"
-                  placeholder="Enter a referral code (if you have one)"
-                  className="w-full rounded-xl border border-slate-700/70 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500/60"
-                />
-                <p className="mt-1 text-[11px] text-slate-400">
-                  Someone referred you? Add their code here and they may receive a reward.
-                </p>
-              </div>
-            )}
-
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 text-[12px] text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  className="h-4 w-4 rounded bg-slate-800 checked:bg-violet-500"
-                />
-                Remember me
-              </label>
-
-              {mode === "login" && (
-                <a href="/forgot" className="text-[11px] text-violet-300 underline">Forgot password?</a>
-              )}
-            </div>
-
+          </>
+        ) : (
+          <>
+            Already have an account?{" "}
             <button
-              type="submit"
-              className="mt-2 w-full rounded-xl bg-violet-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-violet-400 disabled:opacity-60"
-              disabled={loading}
+              onClick={() => setMode("login")}
+              className="text-purple-400 underline"
             >
-              {loading ? (mode === "login" ? "Logging in…" : "Creating account…") : (mode === "login" ? "Log in" : "Sign up")}
+              Sign in
             </button>
-          </form>
+          </>
+        )}
+      </div>
 
-          {msg && <p className="mt-3 text-[12px] text-slate-300">{msg}</p>}
-
-          <div className="mt-4 text-[11px] text-slate-400">
-            <strong>Why sign up?</strong> Earn {BRAND.coinName} by claiming creator assets, join the drops economy, and unlock daily micro-earnings.
-          </div>
-        </section>
-      </main>
+      {msg && (
+        <p className="mt-4 text-center text-xs text-slate-300">{msg}</p>
+      )}
     </div>
-  );
-}
+  </div>
+);
+} 

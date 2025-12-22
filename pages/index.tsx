@@ -1,6 +1,7 @@
 // pages/index.tsx
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/router"; // âœ… NEW
 import { supabase } from "../lib/supabaseClient";
 import { BRAND } from "../lib/brand";
 import { insertLedgerEntry } from "../lib/ledger";
@@ -68,6 +69,7 @@ type EnrichedItem = ItemRow & {
 };
 
 export default function HomePage() {
+  const router = useRouter(); 
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [needsLogin, setNeedsLogin] = useState(false);
 
@@ -85,26 +87,36 @@ export default function HomePage() {
 
   const [claimCounts, setClaimCounts] = useState<Record<number, number>>({});
 
+// user
+  useEffect(() => {
+    async function checkAuth() {
+      const { data } = await supabase.auth.getUser();
+      if (!data?.user) {
+        window.location.replace("/landing"); 
+        return;
+      }
+const { data: flag } = await supabase
+  .from("user_flags")
+  .select("first_mission_done")
+  .eq("user_id", data.user.id)
+  .single();
+
+if (!flag || !flag.first_mission_done) {
+  router.replace("/first-mission");
+  return;
+}
+      setCurrentUser(data.user);
+      setNeedsLogin(false);
+    }
+    checkAuth();
+    if (!currentUser) return null;
+  }, [ ]);
+
   useEffect(() => {
     if (!toast) return;
     const id = setTimeout(() => setToast(null), 3000);
     return () => clearTimeout(id);
   }, [toast]);
-
-  // user
-  useEffect(() => {
-    async function loadUser() {
-      const { data, error } = await supabase.auth.getUser();
-      if (error || !data?.user) {
-        setCurrentUser(null);
-        setNeedsLogin(true);
-        return;
-      }
-      setCurrentUser(data.user);
-      setNeedsLogin(false);
-    }
-    loadUser();
-  }, []);
 
   // wallet
   useEffect(() => {
@@ -289,6 +301,8 @@ export default function HomePage() {
           48;
 
       return {
+
+
         ...item,
         totalClaims,
         popularityScore,
@@ -368,7 +382,7 @@ export default function HomePage() {
 
     if (isPaidDrop) {
       if (walletLoading) {
-        setToast("Wallet is still loading. Please wait…");
+        setToast("Wallet is still loading. Please waitâ€¦");
         return;
       }
 
@@ -433,7 +447,7 @@ console.log("ledger insert user", currentUser.id);
         source_id: String(item.id), // force string
         points: coins,
       });
-      
+
       if (ownError) {
         console.error("Ownership insert error", ownError);
         setToast("Error claiming this asset.");
@@ -523,7 +537,7 @@ console.log("ledger insert user", currentUser.id);
                   Your total {BRAND.coinName}
                 </p>
                 <p className="mt-1 text-2xl font-semibold text-emerald-300">
-                  {claimsLoading ? "…" : totalCoins}
+                  {claimsLoading ? "â€¦" : totalCoins}
                 </p>
                 <p className="mt-1 text-[10px] text-slate-300">
                   Own more assets to climb levels.
@@ -534,7 +548,7 @@ console.log("ledger insert user", currentUser.id);
                 <div>
                   <p className="text-[11px] text-slate-300">Wallet balance</p>
                   <p className="mt-1 text-xl font-semibold text-sky-300">
-                    {walletLoading ? "…" : walletBalance}
+                    {walletLoading ? "â€¦" : walletBalance}
                   </p>
                 </div>
                 <p className="mt-1 text-[10px] text-slate-400">
@@ -556,7 +570,7 @@ console.log("ledger insert user", currentUser.id);
             </div>
 
             {itemsLoading ? (
-              <p className="text-xs text-slate-400">Loading assets…</p>
+              <p className="text-xs text-slate-400">Loading assetsâ€¦</p>
             ) : enrichedItems.length === 0 ? (
               <p className="text-xs text-slate-400">
                 No assets yet. Add some from the admin panel.
@@ -736,7 +750,7 @@ function DropCard({
   const isTrending = item.totalClaims >= 3 && item.popularityScore >= 30;
 
   // price label: rupees for paid, "Free" for free
-  const priceLabel = isPaid ? `₹${price}` : "Free";
+  const priceLabel = isPaid ? `â‚¹${price}` : "Free";
 
   // badges: max 2
   const badges: { key: string; label: string; emoji: string; className: string }[] = [];
@@ -744,7 +758,7 @@ function DropCard({
     badges.push({
       key: "trending",
       label: "Trending",
-      emoji: "🔥",
+      emoji: "ðŸ”¥",
       className: "bg-orange-500/90 text-slate-950",
     });
   }
@@ -752,7 +766,7 @@ function DropCard({
     badges.push({
       key: "ending",
       label: "Ending soon",
-      emoji: "⏳",
+      emoji: "â³",
       className: "bg-amber-400/90 text-slate-950",
     });
   }
@@ -760,7 +774,7 @@ function DropCard({
     badges.push({
       key: "new",
       label: "New",
-      emoji: "🆕",
+      emoji: "ðŸ†•",
       className: "bg-sky-500/90 text-slate-950",
     });
   }
@@ -854,9 +868,9 @@ function DropCard({
 
         <div className="text-[10px] text-slate-400">
           <div className="flex items-center gap-1.5">
-            <span className="text-xs">💎</span>
+            <span className="text-xs">ðŸ’Ž</span>
             <span className="truncate">
-              {ownersText} · +{coins} {BRAND.coinName} · {leftText}
+              {ownersText} Â· +{coins} {BRAND.coinName} Â· {leftText}
             </span>
           </div>
         </div>
@@ -875,8 +889,8 @@ function DropCard({
           >
             {claimingId === item.id
               ? isPaid
-                ? "Processing…"
-                : "Claiming…"
+                ? "Processingâ€¦"
+                : "Claimingâ€¦"
               : !left || left <= 0
               ? "Sold out"
               : isPaid

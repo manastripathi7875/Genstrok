@@ -66,12 +66,13 @@ function Layout({ children }: { children: ReactNode }) {
       router.push("/creator-dashboard");
     }
   };
-
+  
   const hideBottomNav =
     path.startsWith("/auth") ||
     path.startsWith("/admin") ||
-    path.startsWith("/api");
-
+    path.startsWith("/first-mission")
+    path.startsWith("/landing")
+    path.startsWith("/login"); 
   // ---------- SCROLL HIDE/SHOW LOGIC FOR BOTTOM NAV ----------
   const [bottomHiddenByScroll, setBottomHiddenByScroll] = useState(false);
   const lastScrollY = useRef(0);
@@ -361,6 +362,16 @@ function Layout({ children }: { children: ReactNode }) {
 }
 
 export default function MyApp({ Component, pageProps }: AppProps) {
+  const router = useRouter();
+
+  const NO_LAYOUT_ROUTES = ["/landing", "/auth", "/login"];
+
+  const disableLayout = NO_LAYOUT_ROUTES.includes(router.pathname);
+
+  if (disableLayout) {
+    // 🔒 Landing / Auth → NO NAV, NO HEADER
+    return <Component {...pageProps} />;
+  }
   return (
     <Layout>
       <Component {...pageProps} />
