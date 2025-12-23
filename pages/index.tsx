@@ -200,7 +200,6 @@ setStreak(s?.current_streak || 0);
       setNeedsLogin(false);
     }
     checkAuth();
-    if (!currentUser) return null;
   }, [ ]);
 
   useEffect(() => {
