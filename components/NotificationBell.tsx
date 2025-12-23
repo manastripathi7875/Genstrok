@@ -76,7 +76,7 @@ type NotificationRow = {
 
     return () => {
       mounted = false;
-      channel.unsubscribe();
+      supabase.removeChannel(channel);
     };
   }, [userEmail]);
 

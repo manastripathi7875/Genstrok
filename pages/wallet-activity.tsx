@@ -112,7 +112,7 @@ export default function WalletActivityPage() {
       .subscribe();
 
     return () => {
-      channel.unsubscribe();
+      supabase.removeChannel(channel);
     };
   }, [user]);
 

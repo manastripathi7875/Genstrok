@@ -352,8 +352,8 @@ export default function WalletPage() {
       )
       .subscribe();
 
-    return () => {
-      channel.unsubscribe();
+      return () => {
+  supabase.removeChannel(channel);
     };
   }, [user, itemsById]);
 
