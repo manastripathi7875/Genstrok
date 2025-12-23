@@ -5,6 +5,9 @@ import { useRouter } from "next/router"; // âœ… NEW
 import { supabase } from "../lib/supabaseClient";
 import { BRAND } from "../lib/brand";
 import { insertLedgerEntry } from "../lib/ledger";
+
+
+
 type ItemRow = {
   id: number;
   title: string;
@@ -69,7 +72,8 @@ type EnrichedItem = ItemRow & {
 };
 
 export default function HomePage() {
-  const router = useRouter(); 
+  const router = useRouter();
+
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [needsLogin, setNeedsLogin] = useState(false);
 
@@ -84,8 +88,28 @@ export default function HomePage() {
 
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [walletLoading, setWalletLoading] = useState<boolean>(true);
+  // 🔴 EXIT MODAL STATE
+const [showExitModal, setShowExitModal] = useState(false);
 
   const [claimCounts, setClaimCounts] = useState<Record<number, number>>({});
+  const [streak, setStreak] = useState(0);
+
+//handekback
+  // 🔴 EXIT INTENT (BACK / SWIPE)
+useEffect(() => {
+      const onBack = (e: PopStateEvent) => {
+        e.preventDefault();
+    setShowExitModal(true);
+
+    // history ko lock rakho taki baar-baar back pe aaye
+    window.history.pushState(null, "", window.location.href);
+  };
+window.addEventListener("popstate", onBack);
+
+  return () => {
+    window.removeEventListener("popstate", onBack);
+  };
+}, []);
 
 // user
   useEffect(() => {
@@ -105,6 +129,73 @@ if (!flag || !flag.first_mission_done) {
   router.replace("/first-mission");
   return;
 }
+      // =====================
+// 🔥 STREAK LOGIC START
+// =====================
+
+const today = new Date().toISOString().slice(0, 10);
+
+const { data: streakRow } = await supabase
+  .from("user_streaks")
+  .select("*")
+  .eq("user_id", data.user.id)
+  .single();
+      if (!streakRow) {
+  await supabase.from("user_streaks").insert({
+    user_id: data.user.id,
+    current_streak: 1,
+    longest_streak: 1,
+    last_active_date: today,
+  });
+      }
+      else {
+  const last = streakRow.last_active_date;
+
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const y = yesterday.toISOString().slice(0, 10);
+
+  // CASE 1: aaj already counted
+  if (last === today) {
+    // kuch nahi karna
+  }
+
+  // CASE 2: kal aaya tha → streak badhao
+  else if (last === y) {
+    const newStreak = streakRow.current_streak + 1;
+    const longest = Math.max(
+      newStreak,
+      streakRow.longest_streak
+    );
+
+    await supabase
+      .from("user_streaks")
+      .update({
+        current_streak: newStreak,
+        longest_streak: longest,
+        last_active_date: today,
+      })
+      .eq("user_id", data.user.id);
+  }
+
+  // CASE 3: gap aa gaya → reset
+  else {
+    await supabase
+      .from("user_streaks")
+      .update({
+        current_streak: 1,
+        last_active_date: today,
+      })
+      .eq("user_id", data.user.id);
+  }
+      }
+      const { data: s } = await supabase
+  .from("user_streaks")
+  .select("current_streak")
+  .eq("user_id", data.user.id)
+  .single();
+
+setStreak(s?.current_streak || 0);
       setCurrentUser(data.user);
       setNeedsLogin(false);
     }
@@ -519,9 +610,10 @@ console.log("ledger insert user", currentUser.id);
                 <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">
                   Genstrok
                 </p>
-                <p className="text-sm font-semibold text-slate-50">
-                  Creator ownership home
-                </p>
+                <p>🔥 Daily Streak: {streak} days</p>
+                <p style={{ fontSize: 13, opacity: 0.65 }}>
+  ⏰ Kal login karna mat bhoolna, streak active hai
+</p>
               </div>
               <div className="text-right text-[11px]">
                 <p className="text-[10px] text-slate-400">Level</p>
@@ -539,9 +631,6 @@ console.log("ledger insert user", currentUser.id);
                 <p className="mt-1 text-2xl font-semibold text-emerald-300">
                   {claimsLoading ? "â€¦" : totalCoins}
                 </p>
-                <p className="mt-1 text-[10px] text-slate-300">
-                  Own more assets to climb levels.
-                </p>
               </div>
 
               <div className="rounded-3xl border border-slate-800 bg-slate-900/70 px-4 py-3 shadow-lg shadow-slate-950/60 flex flex-col justify-between">
@@ -551,9 +640,6 @@ console.log("ledger insert user", currentUser.id);
                     {walletLoading ? "â€¦" : walletBalance}
                   </p>
                 </div>
-                <p className="mt-1 text-[10px] text-slate-400">
-                  Use balance to enter paid drops.
-                </p>
               </div>
             </div>
           </section>
@@ -723,6 +809,96 @@ console.log("ledger insert user", currentUser.id);
           </div>
         </div>
       )}
+
+{/* 🔴 EXIT MODAL */}
+{showExitModal && (
+  <div
+    style={{
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,0.75)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 9999,
+    }}
+  >
+    <div
+      style={{
+        background: "#0b0f1a",
+        borderRadius: 18,
+        padding: 24,
+        maxWidth: 360,
+        width: "90%",
+        textAlign: "center",
+        color: "#fff",
+      }}
+    >
+      <h3 style={{ fontSize: 20 }}>⚠️ Exit Genstrok?</h3>
+
+      <p style={{ fontSize: 14, opacity: 0.85, marginTop: 10 }}>
+        🔥 Aapki daily streak active hai.  
+        Kal login nahi kiya to streak toot jayegi.
+      </p>
+
+      <p style={{ fontSize: 13, opacity: 0.7, marginTop: 6 }}>
+        ⏳ Kal ka mission: Daily Check-in (+5 coins)
+      </p>
+
+      <div style={{ marginTop: 22, display: "flex", gap: 12 }}>
+        {/* YES EXIT */}
+        <button
+            onClick={() => {
+                        setShowExitModal(false);
+    setTimeout(() => {
+const ref = document.referrer;
+
+            // 1️⃣ Agar user search / external site se aaya
+      if (ref && !ref.includes(window.location.hostname)) {
+          window.location.href = ref;
+          return;
+        }
+
+        // 2️⃣ Direct open / PWA / bookmark
+        // Browser ko control wapas de do
+        window.location.href = "https://www.google.com";
+      
+              }, 50);
+              }}
+          style={{
+            flex: 1,
+            padding: 12,
+            borderRadius: 999,
+            background: "transparent",
+            border: "1px solid #444",
+            color: "#fff",
+          }}
+        >
+          Yes, Exit
+        </button>
+
+        {/* NO STAY */}
+        <button
+          onClick={() => setShowExitModal(false)}
+          style={{
+            flex: 1,
+            padding: 12,
+            borderRadius: 999,
+            background: "#7f5cff",
+            border: "none",
+            color: "#fff",
+          }}
+        >
+          No, Stay
+        </button>
+      </div>
+
+      <p style={{ marginTop: 14, fontSize: 12, opacity: 0.5 }}>
+        Pro tip: Daily streak = faster rewards 🚀
+      </p>
+    </div>
+  </div>
+)}  
     </div>
   );
 }
@@ -904,7 +1080,7 @@ function DropCard({
             Details
           </a>
         </div>
-      </div>
+        </div>
     </article>
   );
 }
