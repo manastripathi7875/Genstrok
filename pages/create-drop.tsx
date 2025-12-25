@@ -212,8 +212,21 @@ creator_id: user.id,
             description_images: descriptionImageUrls,
           },
         ])
+        
         .select()
         .single();
+      await supabase.from("activity_feed").insert({
+        actor_id: user.id,
+        actor_name: user.user_metadata?.name || user.email,
+        actor_avatar: user.user_metadata?.avatar_url || null,
+        action_type: "drop_created",
+        target_type: "drop",
+        target_id: data?.[0]?.id,
+        meta: {
+          title: title,
+          price: price,
+        },
+      });
 
       if (error) {
         console.error("Insert error", error);

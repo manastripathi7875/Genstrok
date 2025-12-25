@@ -20,6 +20,7 @@ function Layout({ children }: { children: ReactNode }) {
   const { settings, hasUnread, markSeen } = useBrandStory();
   const logoUrl = settings?.logo_url || null;
 
+
   // load current user for top right profile initial + profile slug
   useEffect(() => {
     async function loadProfileName() {
@@ -362,7 +363,18 @@ function Layout({ children }: { children: ReactNode }) {
 export default function MyApp({ Component, pageProps }: AppProps) {
   const router = useRouter();
 
-  
+  useEffect(() => {
+    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+      navigator.serviceWorker
+        .register("/sw.js")
+        .then(() => {
+          console.log("Service Worker registered");
+        })
+        .catch((err) => {
+          console.error("Service Worker registration failed", err);
+        });
+    }
+  }, []);
 
   const NO_LAYOUT_ROUTES = ["/landing", "/auth", "/login", "/first-mission" ];
 

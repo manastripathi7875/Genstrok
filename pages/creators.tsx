@@ -1,8 +1,10 @@
-
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { BRAND } from "../lib/brand";
 import Link from "next/link";
+
+/* ---------------- TYPES ---------------- */
+
 type ItemRow = {
   id: string;
   title: string;
@@ -18,6 +20,8 @@ type CreatorCard = {
   totalStock: number;
   sampleCover: string | null;
 };
+
+/* ---------------- BOTTOM NAV ---------------- */
 
 type NavKey = "home" | "wallet" | "creators" | "leaderboard";
 
@@ -43,13 +47,10 @@ function BottomNav({ active }: { active: NavKey }) {
           <span>Wallet</span>
         </a>
         <a href="/creators" className={itemClass("creators")}>
-          <span className="text-base">👤</span>
-          <span>Creators</span>
+          <span className="text-base">👥</span>
+          <span>People</span>
         </a>
-        <a
-          href="/leaderboard"
-          className={itemClass("leaderboard")}
-        >
+        <a href="/leaderboard" className={itemClass("leaderboard")}>
           <span className="text-base">🏆</span>
           <span>Top</span>
         </a>
@@ -57,6 +58,8 @@ function BottomNav({ active }: { active: NavKey }) {
     </nav>
   );
 }
+
+/* ---------------- PAGE ---------------- */
 
 export default function Creators() {
   const [creators, setCreators] = useState<CreatorCard[]>([]);
@@ -66,14 +69,13 @@ export default function Creators() {
   useEffect(() => {
     async function load() {
       setLoading(true);
+
       const { data, error } = await supabase
         .from("items")
-        .select(
-          "id, title, creator_name, cover_url, price, stock"
-        );
+        .select("id, title, creator_name, cover_url, price, stock");
 
       if (error) {
-        console.log(error);
+        console.error(error);
         setErrorText(error.message);
         setLoading(false);
         return;
@@ -97,6 +99,7 @@ export default function Creators() {
 
         map[name].itemCount += 1;
         map[name].totalStock += item.stock || 0;
+
         if (!map[name].sampleCover && item.cover_url) {
           map[name].sampleCover = item.cover_url;
         }
@@ -105,6 +108,7 @@ export default function Creators() {
       const list = Object.values(map).sort(
         (a, b) => b.itemCount - a.itemCount
       );
+
       setCreators(list);
       setLoading(false);
     }
@@ -121,13 +125,14 @@ export default function Creators() {
       </div>
 
       <main className="relative mx-auto flex min-h-screen max-w-5xl flex-col px-4 pb-4 pt-6 sm:px-6">
+        {/* HEADER */}
         <header className="mb-5 flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold">
-              Creators on {BRAND.name}
+              People on {BRAND.name}
             </h1>
             <p className="text-[11px] text-slate-400">
-              Makers who&apos;ve listed drops on the market.
+              Real users earning by creating and completing work.
             </p>
           </div>
           <a
@@ -138,12 +143,14 @@ export default function Creators() {
           </a>
         </header>
 
+        {/* ERROR */}
         {errorText && (
           <div className="mb-3 rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-[11px] text-red-100">
             Error: {errorText}
           </div>
         )}
 
+        {/* LOADING */}
         {loading ? (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {Array.from({ length: 4 }).map((_, i) => (
@@ -155,8 +162,7 @@ export default function Creators() {
           </div>
         ) : creators.length === 0 ? (
           <p className="text-xs text-slate-400">
-            No creators yet. Add items with a creator name to see
-            them here.
+            No people yet. Start creating or completing work to appear here.
           </p>
         ) : (
           <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -179,15 +185,22 @@ export default function Creators() {
                       className="h-full w-full object-cover"
                     />
                   </div>
+
                   <div className="flex-1">
                     <h2 className="text-sm font-semibold text-slate-50">
                       {c.name}
                     </h2>
+
                     <p className="mt-1 text-[11px] text-slate-400">
-                      {c.itemCount} drops • total stock{" "}
-                      {c.totalStock}
+                      {c.itemCount} drops • stock {c.totalStock}
+                    </p>
+
+                    {/* SOCIAL SIGNAL */}
+                    <p className="mt-0.5 text-[11px] text-emerald-400">
+                      💰 Active earner on Genstrok
                     </p>
                   </div>
+
                   <Link
                     href={`/creators/${encodeURIComponent(c.name)}`}
                     className="rounded-full bg-slate-900 px-3 py-1 text-[11px] text-slate-200 border border-slate-700/70 hover:border-violet-500"

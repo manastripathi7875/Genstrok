@@ -284,12 +284,32 @@ export default function DropDetailPage() {
         currentUser.email ||
         userId;
 
-      const { error: ownErr } = await supabase.from("ownerships").insert({
-        item_id: item.id,
-        buyer_id: userId,
-        buyer_name: buyerName,
-        coins,
+    const { error: ownErr } = await supabase.from("ownerships").insert({
+
+      item_id: item.id,
+      buyer_id: userId,
+      buyer_name: buyerName,
+      coins,
+    });
+      
+      await supabase.from("activity_feed").insert({
+        actor_id: currentUser.id,
+        actor_name:
+          currentUser.user_metadata?.full_name ||
+          currentUser.email ||
+          "User",
+        actor_avatar: currentUser.user_metadata?.avatar_url || null,
+        action_type: "claim",
+        target_type: "drop",
+        target_id: item.id,
+        meta: {
+          title: item.title,
+          coins: coins,
+          price: price,
+        },
       });
+      
+  
 
       if (ownErr) {
         console.error("Ownership insert error", ownErr);
