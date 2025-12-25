@@ -28,7 +28,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       const { error } = await supabaseAdmin
         .from("user_settings")
-        .upsert({ user_id, key, value: value ?? {} }, { onConflict: ["user_id", "key"] });
+      .upsert(
+        { user_id, key, value: value ?? {} },
+        { onConflict: "user_id,key" }
+      );
 
       if (error) throw error;
       return res.status(200).json({ ok: true });
