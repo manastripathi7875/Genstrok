@@ -142,7 +142,7 @@ export default function AuthPage() {
       {/* LOGO */}
       <div className="flex justify-center mb-5">
         <div className="h-14 w-14 rounded-2xl bg-black/60 flex items-center justify-center text-xl font-bold border border-white/10">
-          {BRAND.shortName || "G"}
+          {BRAND.short || "G"}
         </div>
       </div>
 
