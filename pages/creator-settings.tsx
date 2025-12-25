@@ -17,7 +17,8 @@ type Profile = {
 
 export default function CreatorSettingsPage() {
   const router = useRouter();
-  const { theme, setTheme } = useTheme ? useTheme() : { theme: "system", setTheme: (t: any) => {} };
+  type ThemeMode = "light" | "dark" | "system";
+  const [theme, setTheme] = useState<ThemeMode>("dark");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -32,7 +33,7 @@ export default function CreatorSettingsPage() {
   const [avatarUrl, setAvatarUrl] = useState("");
   const [payoutUpi, setPayoutUpi] = useState("");
   const [payoutNote, setPayoutNote] = useState("");
-
+  
   // notification and advanced toggles (client-side toggles saved to creator_profiles table as JSON in `settings` column OR to UI only)
   const [emailUpdates, setEmailUpdates] = useState(true);
   const [inAppAlerts, setInAppAlerts] = useState(true);

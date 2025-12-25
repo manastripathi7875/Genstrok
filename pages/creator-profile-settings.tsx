@@ -107,7 +107,7 @@ export default function CreatorProfileSettingsPage() {
 
         <div className="text-right">
           <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
-            {BRAND.shortCode || BRAND.name}
+            {BRAND.short || BRAND.name}
           </p>
           <h1 className="text-sm font-semibold text-slate-50">
             Profile basics
