@@ -388,6 +388,45 @@ export default function WalletPage() {
     setTimeout(() => setToast(null), 2200);
   }
 
+  async function handleRazorpayTopup(amount: number) {
+  if (!user) {
+    showToast("Please login first");
+    return;
+  }
+
+  try {
+    const res = await fetch("/api/create-order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ amount, user_id: user.id }),
+    });
+
+    const data = await res.json();
+
+    const options = {
+      key: data.key,
+      amount: data.amount,
+      currency: "INR",
+      order_id: data.orderId,
+      name: "Genstrok Wallet",
+      description: "Wallet Topup",
+      notes: {
+        user_id: user.id, // 🔥 THIS IS CRITICAL
+      },
+      handler: function () {
+        showToast("Payment successful. Wallet updating...");
+      },
+      theme: { color: "#7c3aed" },
+    };
+
+    // @ts-ignore
+    const rzp = new window.Razorpay(options);
+    rzp.open();
+  } catch (err) {
+    console.error(err);
+    showToast("Payment failed");
+  }
+}
   // DEV topup
   async function handleTopup(amount: number) {
     if (!user) {
@@ -775,29 +814,33 @@ export default function WalletPage() {
                   rewards.
                 </p>
               </div>
+              <button
+  type="button"
+  onClick={() => showToast("Withdraw coming soon. KYC required.")}
+  className="text-[11px] text-slate-400 underline"
+>
+  Withdraw money
+</button>
 
               <div className="flex flex-col items-end gap-2">
                 <p className="text-[10px] text-slate-500">
-                  Test add money
+                   Add money to wallet 
                 </p>
                 <div className="flex gap-2">
                   {[10, 50, 100].map((amt) => (
                     <button
                       key={amt}
                       type="button"
-                      onClick={() => handleTopup(amt)}
-                      disabled={topupLoadingAmount === amt}
-                      className="rounded-full border border-slate-700/80 bg-slate-900/80 px-3 py-1.5 text-[11px] font-medium text-slate-100 hover:bg-slate-800 disabled:opacity-60"
-                    >
-                      {topupLoadingAmount === amt
-                        ? "Adding…"
-                        : `+₹${amt}`}
+                      onClick={() => handleRazorpayTopup(amt)}
+      className="rounded-full border border-slate-700/80 bg-slate-900/80 px-3 py-1.5 text-[11px] font-medium text-slate-100 hover:bg-slate-800"
+    >
+      +₹{amt}
                     </button>
                   ))}
                 </div>
                 <p className="text-[9px] text-slate-500">
-                  Dev mode only – later this will use Cashfree.
-                </p>
+  Secure payment via Razorpay
+</p>
               </div>
             </div>
           </div>
@@ -900,175 +943,9 @@ export default function WalletPage() {
           </div>
         </section>
 
-        {/* DAILY MISSIONS LIST */}
-        <section className="mb-6" id="daily-missions">
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-100">
-              Daily missions
-            </h2>
-            {missionsLoading && (
-              <span className="text-[10px] text-slate-500">Loading…</span>
-            )}
-          </div>
 
-          {missionsLoading ? (
-            <p className="text-xs text-slate-400">Loading missions…</p>
-          ) : missions.length === 0 ? (
-            <p className="text-xs text-slate-400">
-              No missions available right now. Check back later.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {missions.map((mission) => {
-                const completed = completedMissionIdsToday.includes(
-                  mission.id
-                );
-                const isProcessing = missionActionId === mission.id;
 
-                return (
-                  <div
-                    key={mission.id}
-                    className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/80 px-3 py-2 gap-3"
-                  >
-                    <div>
-                      <div className="text-xs font-semibold text-slate-50">
-                        {mission.title}
-                      </div>
-                      {mission.description && (
-                        <div className="mt-1 text-[11px] text-slate-400">
-                          {mission.description}
-                        </div>
-                      )}
-                      <div className="mt-1 text-[10px] text-emerald-300">
-                        Reward: +₹{mission.reward_rupees.toFixed(2)} to wallet
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end gap-1">
-                      <span className="text-[10px] text-slate-400">
-                        Daily
-                      </span>
-                      <button
-                        type="button"
-                        onClick={
-                          completed
-                            ? undefined
-                            : () => handleCompleteMission(mission)
-                        }
-                        disabled={completed || isProcessing}
-                        className={
-                          "rounded-full px-3 py-1 text-[10px] font-semibold " +
-                          (completed
-                            ? "border border-emerald-500/70 text-emerald-300 opacity-80"
-                            : "bg-emerald-500 text-slate-950 hover:bg-emerald-400") +
-                          (isProcessing ? " opacity-60" : "")
-                        }
-                      >
-                        {completed
-                          ? "Done for today"
-                          : isProcessing
-                          ? "Claiming…"
-                          : "Claim reward"}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
 
-        {/* BRAND TASKS LIST */}
-        <section className="mb-6" id="brand-tasks">
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-100">
-              Brand & local tasks
-            </h2>
-            {brandTasksLoading && (
-              <span className="text-[10px] text-slate-500">Loading…</span>
-            )}
-          </div>
-
-          {brandTasksLoading ? (
-            <p className="text-xs text-slate-400">Loading brand tasks…</p>
-          ) : brandTasks.length === 0 ? (
-            <p className="text-xs text-slate-400">
-              No brand tasks live right now. They will appear here when brands
-              launch campaigns.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {brandTasks.map((task) => {
-                const completed = completedBrandTaskIds.includes(task.id);
-                const isProcessing = brandTaskActionId === task.id;
-
-                return (
-                  <div
-                    key={task.id}
-                    className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/80 px-3 py-2 gap-3"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <div className="text-xs font-semibold text-slate-50">
-                          {task.title}
-                        </div>
-                        {task.brand_name && (
-                          <span className="text-[9px] rounded-full bg-slate-800 px-2 py-0.5 text-slate-300">
-                            {task.brand_name}
-                          </span>
-                        )}
-                      </div>
-                      {task.description && (
-                        <div className="mt-1 text-[11px] text-slate-400">
-                          {task.description}
-                        </div>
-                      )}
-                      <div className="mt-1 text-[10px] text-emerald-300">
-                        Reward: +₹{task.reward_rupees.toFixed(2)} to wallet
-                      </div>
-                      {task.location_tag && (
-                        <div className="mt-1 text-[9px] text-slate-500">
-                          Location: {task.location_tag}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex flex-col items-end gap-1">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenBrandTaskLink(task)}
-                        className="rounded-full border border-slate-700 px-3 py-1 text-[10px] text-slate-200 hover:bg-slate-800"
-                      >
-                        Open task
-                      </button>
-                      <button
-                        type="button"
-                        onClick={
-                          completed
-                            ? undefined
-                            : () => handleCompleteBrandTask(task)
-                        }
-                        disabled={completed || isProcessing}
-                        className={
-                          "rounded-full px-3 py-1 text-[10px] font-semibold " +
-                          (completed
-                            ? "border border-emerald-500/70 text-emerald-300 opacity-80"
-                            : "bg-emerald-500 text-slate-950 hover:bg-emerald-400") +
-                          (isProcessing ? " opacity-60" : "")
-                        }
-                      >
-                        {completed
-                          ? "Completed"
-                          : isProcessing
-                          ? "Claiming…"
-                          : "Claim reward"}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
 
         {/* OWNED ASSETS – HOLD & RESELL */}
         <section className="mb-6">

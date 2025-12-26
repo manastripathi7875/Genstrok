@@ -8,11 +8,13 @@ import { ReactNode, useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useBrandStory } from "../lib/useBrandStory";
 import { BrandStoryModal } from "../components/BrandStoryModal";
-
+import Script from "next/script";
 function Layout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const path = router.pathname;
-
+const isWebView =
+  typeof navigator !== "undefined" &&
+  /wv|WebView/i.test(navigator.userAgent);
   const [profileName, setProfileName] = useState<string | null>(null);
   const [fabOpen, setFabOpen] = useState(false);
   const [storyOpen, setStoryOpen] = useState(false);
@@ -393,6 +395,10 @@ export default function MyApp(
   }
   return (
     <Layout>
+      <Script
+  src="https://checkout.razorpay.com/v1/checkout.js"
+  strategy="beforeInteractive"
+/>
       <Component {...pageProps} />
     </Layout>
   );
