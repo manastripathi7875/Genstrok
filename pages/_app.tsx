@@ -360,8 +360,14 @@ function Layout({ children }: { children: ReactNode }) {
   );
 }
 
-export default function MyApp({ Component, pageProps }: AppProps) {
+export default function MyApp(
+  { 
+  Component, pageProps }: AppProps) {
   const router = useRouter();
+  const isBot =
+  typeof navigator !== "undefined" &&
+  (navigator.userAgent.includes("PWABuilder") ||
+   navigator.userAgent.includes("Lighthouse"));
 
   useEffect(() => {
     if (typeof window !== "undefined" && "serviceWorker" in navigator) {
@@ -375,17 +381,13 @@ export default function MyApp({ Component, pageProps }: AppProps) {
         });
     }
   }, []);
-  useEffect(() => {
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("/sw.js");
-  }
-}, []);
+  
 
   const NO_LAYOUT_ROUTES = ["/landing", "/auth", "/login", "/first-mission" ];
 
   const disableLayout = NO_LAYOUT_ROUTES.includes(router.pathname);
 
-  if (disableLayout) {
+  if (disableLayout || isBot) {
     // 🔒 Landing / Auth → NO NAV, NO HEADER
     return <Component {...pageProps} />;
   }

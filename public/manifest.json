@@ -1,22 +1,13 @@
 {
   "name": "Genstrok",
   "short_name": "Genstrok",
-  "id": "/",
-  "description": "Genstrok is a creator ownership and daily earning platform where users complete small tasks, claim drops, and earn rewards.",
-  "categories": ["finance", "productivity", "social"]
-  "start_url": "/landing",
+  "description": "Genstrok is a creator ownership and daily earning platform.",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#020617",
   "theme_color": "#020617",
   "orientation": "portrait",
-  "screenshots": [
-  {
-    "src": "/screenshots/home.png",
-    "sizes": "1080x1920",
-    "type": "image/png"
-  }
-  ]
   "icons": [
     {
       "src": "/icons/icon-192.png",

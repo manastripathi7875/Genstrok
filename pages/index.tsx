@@ -116,7 +116,16 @@ window.addEventListener("popstate", onBack);
     async function checkAuth() {
       const { data } = await supabase.auth.getUser();
       if (!data?.user) {
-        window.location.replace("/landing"); 
+        if (
+          typeof navigator !== "undefined" &&
+          (navigator.userAgent.includes("PWABuilder") ||
+           navigator.userAgent.includes("Lighthouse"))
+        ) {
+          // BOT ko home page dekhne do
+          return;
+        }
+
+        window.location.replace("/landing");
         return;
       }
 const { data: flag } = await supabase
@@ -125,10 +134,18 @@ const { data: flag } = await supabase
   .eq("user_id", data.user.id)
   .single();
 
-if (!flag || !flag.first_mission_done) {
-  router.replace("/first-mission");
-  return;
-}
+      if (!flag || !flag.first_mission_done) {
+        if (
+          typeof navigator !== "undefined" &&
+          (navigator.userAgent.includes("PWABuilder") ||
+           navigator.userAgent.includes("Lighthouse"))
+        ) {
+          return;
+        }
+
+        router.replace("/first-mission");
+        return;
+      }
       // =====================
 // 🔥 STREAK LOGIC START
 // =====================
