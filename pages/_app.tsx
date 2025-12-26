@@ -375,6 +375,11 @@ export default function MyApp({ Component, pageProps }: AppProps) {
         });
     }
   }, []);
+  useEffect(() => {
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/sw.js");
+  }
+}, []);
 
   const NO_LAYOUT_ROUTES = ["/landing", "/auth", "/login", "/first-mission" ];
 
