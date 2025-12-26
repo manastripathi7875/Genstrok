@@ -4,18 +4,15 @@ export default function Document() {
   return (
     <Html lang="en">
       <Head>
-        {/* PWA */}
+        {/* PWA Manifest */}
         <link rel="manifest" href="/manifest.json" />
-        <meta name="theme-color" content="#020616" />
 
-        {/* Mobile */}
+        {/* Required for PWA */}
+        <meta name="theme-color" content="#020617" />
+        <meta name="application-name" content="Genstrok" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="Genstrok" />
-
-        {/* Icons */}
-        <link rel="icon" href="/icon-192.png" />
-        <link rel="apple-touch-icon" href="/icon-192.png" />
       </Head>
       <body>
         <Main />
