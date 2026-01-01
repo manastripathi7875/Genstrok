@@ -175,8 +175,18 @@ export default function CreatorDetail() {
   action_type: "follow",
   target_type: "user",
   target_id: creatorId,
+        meta: {
+      creator_slug: creatorSlug,
+    },
 });
-
+await supabase.from("notifications").insert({
+  buyer_id: creatorId, // jis ko follow kiya gaya
+  title: "New follower 👋",
+  body: `${currentUser.user_metadata?.name || "Someone"} started following you`,
+  link: `/creators/${encodeURIComponent(
+    currentUser.user_metadata?.name || ""
+  )}`,
+});
       setIsFollowing(true);
       setFollowersCount((c) => c + 1);
     }
@@ -190,14 +200,30 @@ export default function CreatorDetail() {
     const totalClaims = claims.length;
     const coins = claims.reduce((s, r) => s + (r.coins || 0), 0);
 
-    const trust =
-      coins > 50000 ? "High Trust" : coins > 5000 ? "Growing" : "New";
+    const trustScore = Math.min(
+      100,
+      Math.floor((coins / 1000) + items.length * 2)
+    );
 
-    return { drops, totalStock, totalClaims, coins, trust };
-  }, [items, claims]);
+    const trust =
+      trustScore > 70 ? "High Trust" :
+      trustScore > 30 ? "Growing" :
+      "New";
+
+  return {
+    drops,
+    totalStock,
+    totalClaims,
+    coins,
+    trust: trust, 
+    trustScore,
+    };
+    }, [items, claims]);
 
   const displayName = profile?.display_name || creatorSlug || "Creator";
+    
   const displayBio = profile?.bio || `Active creator on ${BRAND.name}.`;
+
 
   const canEdit =
     !!currentUser && !!creatorId && currentUser.id === creatorId;
@@ -242,8 +268,8 @@ function handleOpenSettings() {
 
         {/* profile header */}
         <section className="mb-6 rounded-3xl border border-slate-800 bg-slate-950/90 p-5">
-          <div className="flex items-center gap-4">
-            <div className="h-16 w-16 rounded-full bg-slate-800 flex items-center justify-center">
+          
+              <div className="flex items-center gap-4">
               {profile?.avatar_url ? (
                 <img
                   src={profile.avatar_url}
@@ -260,15 +286,16 @@ function handleOpenSettings() {
               <h1 className="font-semibold">{displayName}</h1>
               <p className="text-xs text-slate-400">{displayBio}</p>
               <p className="mt-1 text-[11px] text-emerald-400">
-                {stats.trust} • Active earner
+                {stats.trust} • Trust score {stats.trustScore}/100
               </p>
             </div>
 
             {/* FOLLOW / EDIT */}
             {currentUser && creatorId && currentUser.id !== creatorId && (
+      <div className="mt-3">
               <button
                 onClick={handleFollow}
-                className={`rounded-full px-4 py-1.5 text-[11px] font-semibold ${
+                className={ `rounded-full px-4 py-1.5 text-[11px] font-semibold ${
                   isFollowing
                     ? "border border-slate-600 text-slate-300"
                     : "bg-violet-500 text-slate-950"
@@ -276,7 +303,10 @@ function handleOpenSettings() {
               >
                 {isFollowing ? "Following" : "Follow"}
               </button>
-            )}
+      <p className="mt-1 text-[10px] text-slate-500">
+    💬 Chat & work offers coming soon
+  </p>
+            )
             {!creatorId && (
   <span className="text-[11px] text-slate-400">
     Unverified profile
@@ -304,13 +334,18 @@ function handleOpenSettings() {
               </button>
             )}
           </div>
+      )}
+    
         </section>
 
         {/* stats */}
         <section className="mb-6 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
           <Stat label="Drops" value={stats.drops} />
           <Stat label="Stock" value={stats.totalStock} />
-          <Stat label="Claims" value={stats.totalClaims} />
+          <Stat
+            label="Est. Earnings ₹"
+            value={Math.floor(stats.coins / 100)}
+          />
           <Stat label="Coins" value={stats.coins} highlight />
           <Stat label="Followers" value={followersCount} />
         </section>

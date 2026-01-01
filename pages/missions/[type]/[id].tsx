@@ -12,6 +12,8 @@ export default function TaskDetailPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [locked, setLocked] = useState(false);
+const [requiredSkill, setRequiredSkill] = useState<number | null>(null);
 
   useEffect(() => {
     if (!type || !id) return;
@@ -26,6 +28,27 @@ export default function TaskDetailPage() {
 
       const table =
         type === "mission" ? "daily_missions" : "brand_tasks";
+      
+      const { data: map } = await supabase
+  .from("skill_tasks_map")
+  .select("skill_id")
+  .eq("task_type","mission")
+  .eq("task_type", "brand")
+  .eq("task_id", id)
+  .maybeSingle();
+
+if (map) {
+  setRequiredSkill(map.skill_id);
+
+  const { data: us } = await supabase
+    .from("user_skills")
+    .select("skill_id")
+    .eq("user_id", auth.user.id)
+    .eq("skill_id", map.skill_id)
+    .maybeSingle();
+
+  setLocked(!us);
+}
 
       const { data, error } = await supabase
         .from(table)
@@ -127,10 +150,20 @@ export default function TaskDetailPage() {
           {msg}
         </p>
       )}
-
+{locked && requiredSkill && (
+  <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-300">
+    🔒 This task requires a skill  
+    <button
+      onClick={() => router.push(`/skills/${requiredSkill}`)}
+      className="ml-2 underline"
+    >
+      View skill →
+    </button>
+  </div>
+)}
       <button
         onClick={submitProof}
-        disabled={submitting}
+        disabled={locked || submitting}
         className="mt-4 rounded-full bg-violet-500 px-6 py-2 text-sm font-semibold text-black disabled:opacity-60"
       >
         {submitting ? "Submitting…" : "Submit Proof"}

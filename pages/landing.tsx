@@ -31,9 +31,9 @@ export default function LandingPage() {
           lineHeight: 1.2,
         }}
       >
-        Roz aao.<br />
-        Chhota kaam karo.<br />
-        Paisa kamao.
+        Roz aao <br />
+        Participate karo<br />
+        Digital ownership banao.
       </h1>
 
       {/* Explanation */}
@@ -48,6 +48,11 @@ export default function LandingPage() {
         Genstrok me skill, course ya investment nahi chahiye.
         Sirf participate karo, ownership lo aur rewards pao.
       </p>
+      <p style={{ opacity: 0.8 }}>
+Genstrok is a digital platform offering digital services and creator access.
+Payments are collected only for digital platform features.
+There is no gambling, betting, or guaranteed earnings involved.
+</p>
 
       {/* CTA */}
       <button
@@ -64,7 +69,7 @@ export default function LandingPage() {
           cursor: "pointer",
         }}
       >
-        Start Earning
+        Get Started
       </button>
 
       {/* Trust text */}
@@ -77,6 +82,22 @@ export default function LandingPage() {
       >
         No spam • No fake promises • Real participation
       </p>
+      {/* Footer links for compliance */}
+<div
+  style={{
+    marginTop: 30,
+    display: "flex",
+    gap: 12,
+    fontSize: 12,
+    opacity: 0.7,
+    flexWrap: "wrap",
+  }}
+>
+  <a href="/privacy-policy">Privacy Policy</a>
+  <a href="/terms-and-conditions">Terms</a>
+  <a href="/refund-policy">Refund</a>
+  <a href="/contact">Contact</a>
+</div>
     </div>
   );
 }

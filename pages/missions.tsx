@@ -50,6 +50,7 @@ export default function MissionsPage() {
     () => new Date().toISOString().slice(0, 10),
     []
   );
+  const [lockedTasks, setLockedTasks] = useState<Record<number, boolean>>({});
 
   /* ================= LOAD DATA ================= */
 
@@ -62,6 +63,32 @@ export default function MissionsPage() {
       }
 
       setUser(auth.user);
+
+      const { data: maps } = await supabase
+  .from("skill_tasks_map")
+  .select("task_id, skill_id")
+  .eq("task_type", "mission");
+
+if (maps && maps.length) {
+  const skillIds = maps.map((m:any) => m.skill_id);
+
+  const { data: unlocked } = await supabase
+    .from("user_skills")
+    .select("skill_id")
+    .eq("user_id", auth.user.id)
+    .in("skill_id", skillIds);
+
+  const unlockedIds = new Set(
+    (unlocked || []).map((u:any) => u.skill_id)
+  );
+
+  const lockMap: Record<number, boolean> = {};
+  maps.forEach((m:any) => {
+    lockMap[m.task_id] = !unlockedIds.has(m.skill_id);
+  });
+
+  setLockedTasks(lockMap);
+}
 
       // wallet
       const { data: wallet } = await supabase
@@ -116,6 +143,29 @@ export default function MissionsPage() {
     load();
   }, [todayKey]);
 
+  useEffect(() => {
+  if (!user) return;
+
+  const channel = supabase
+    .channel("mission-realtime")
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "missions",
+        filter: `assigned_to=eq.${user.id}`,
+      },
+      (payload) => {
+        setMissions((prev) => [payload.new as Mission, ...prev]);
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [user]);
   /* ================= LOGIN ================= */
 
   if (needsLogin) {
@@ -194,6 +244,11 @@ export default function MissionsPage() {
                   <div className="flex justify-between">
                     <div>
                       <p className="text-sm font-semibold">{m.title}</p>
+                      {lockedTasks[m.id] && (
+  <p className="mt-1 text-[11px] text-yellow-400">
+    Required skill needed 🔒
+  </p>
+)}
                       <p className="text-xs text-slate-400 mt-1">
                         {m.short_description}
                       </p>
@@ -204,18 +259,21 @@ export default function MissionsPage() {
                   </div>
 
                   <button
-                    onClick={() =>
-                      router.push(`/missions/mission/${m.id}`)
-                    }
+                    disabled={lockedTasks[m.id]}
+                    onClick={() => {
+                      if (lockedTasks[m.id]) {
+                        alert("Unlock required skill first");
+                        return;
+                      }
+                      router.push(`/missions/mission/${m.id}`);
+                    }}
                     className={`mt-4 w-full rounded-full py-2 font-semibold ${
-                      missionDone[m.id]
-                        ? "bg-emerald-500/20 text-emerald-300"
+                      lockedTasks[m.id]
+                        ? "bg-slate-700 text-slate-400"
                         : "bg-emerald-500 text-black"
                     }`}
                   >
-                    {missionDone[m.id]
-                      ? "Completed Today"
-                      : "View task"}
+                    {lockedTasks[m.id] ? "Skill locked 🔒" : "View task"}
                   </button>
                 </div>
               ))

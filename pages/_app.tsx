@@ -12,6 +12,12 @@ import Script from "next/script";
 function Layout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const path = router.pathname;
+  useEffect(() => {
+  if (path === "/notifications") {
+    setNotifCount(0);
+  }
+}, [path]);
+  
 const isWebView =
   typeof navigator !== "undefined" &&
   /wv|WebView/i.test(navigator.userAgent);
@@ -21,6 +27,76 @@ const isWebView =
 
   const { settings, hasUnread, markSeen } = useBrandStory();
   const logoUrl = settings?.logo_url || null;
+  const [notifCount, setNotifCount] = useState(0);
+
+  useEffect(() => {
+  supabase.auth.getUser().then(({ data }) => {
+    if (!data?.user) return;
+
+    const channel = supabase
+      .channel("bell-count")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
+          filter: `buyer_id=eq.${data.user.id}`,
+        },
+        () => {
+          setNotifCount((c) => c + 1);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  });
+}, []);
+// 🔔 REALTIME notification listener
+useEffect(() => {
+  let channel: any;
+
+  async function setupRealtime() {
+    const { data } = await supabase.auth.getUser();
+    const user = data?.user;
+    if (!user) return;
+
+    channel = supabase
+      .channel("realtime-notifications")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "activity_feed",
+          filter: `target_id=eq.${user.id}`,
+        },
+        (payload) => {
+          console.log("🔔 New notification", payload);
+
+          // Bell count +1
+          setNotifCount((c) => c + 1);
+
+          // OPTIONAL: vibration / sound
+          if (navigator.vibrate) {
+            navigator.vibrate(80);
+          }
+        }
+      )
+      .subscribe();
+  }
+
+  setupRealtime();
+
+  return () => {
+    if (channel) {
+      supabase.removeChannel(channel);
+    }
+  };
+}, []);
+  
 
 
   // load current user for top right profile initial + profile slug
@@ -50,7 +126,50 @@ const isWebView =
 
     loadProfileName();
   }, []);
+  // 🔔 Load notification count for bell
+useEffect(() => {
+  async function loadNotifCount() {
+    const { data } = await supabase.auth.getUser();
+    const user = data?.user;
 
+    if (!user) {
+      setNotifCount(0);
+      return;
+    }
+
+    const { count, error } = await supabase
+      .from("activity_feed")
+      .select("*", { count: "exact", head: true })
+      .eq("target_type", "creator")
+      .eq("target_id", user.id);
+
+    if (!error) {
+      setNotifCount(count || 0);
+    }
+  }
+
+  loadNotifCount();
+}, []);
+useEffect(() => {
+  const channel = supabase
+    .channel("realtime-notifications")
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "notifications",
+      },
+      (payload) => {
+        setNotifCount((c) => c + 1);
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, []);
   const profileInitial = (profileName || BRAND.name)
     .charAt(0)
     .toUpperCase();
@@ -188,11 +307,15 @@ const isWebView =
         <nav className="flex items-center gap-3 text-[11px]">
           <Link
             href="/notifications"
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-700/70 bg-slate-900/80 hover:bg-slate-800 text-base shadow-md shadow-black/30"
+            className="relative flex h-9 w-9 items-center justify-center rounded-full border border-slate-700/70 bg-slate-900/80 hover:bg-slate-800 text-base shadow-md shadow-black/30"
           >
-            <span role="img" aria-label="bell">
-              🔔
-            </span>
+            <span role="img" aria-label="bell">🔔</span>
+
+            {notifCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-[10px] text-white flex items-center justify-center">
+                {notifCount}
+              </span>
+            )}
           </Link>
 
           <Link

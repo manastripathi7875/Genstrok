@@ -44,6 +44,29 @@ export default function AdminProofs() {
         .from("task_proofs")
         .update({ status: "approved" })
         .eq("id", p.id);
+      // 🔓 SKILL UNLOCK LOGIC
+const { data: skillMap } = await supabase
+  .from("skill_tasks_map")
+  .select("skill_id")
+  .eq("task_type", p.task_type)
+  .eq("task_id", p.task_id)
+  .maybeSingle();
+
+if (skillMap?.skill_id) {
+  await supabase.from("user_skills").upsert({
+    user_id: p.user_id,
+    skill_id: skillMap.skill_id,
+    status: "approved",
+    unlocked_at: new Date().toISOString(),
+  });
+  await supabase.from("activity_feed").insert({
+  actor_id: p.user_id,
+  actor_name: "User",
+  action_type: "task_completed",
+  target_type: p.task_type, // mission / brand
+  target_id: String(p.task_id),
+});
+}
 
       // 2️⃣ fetch reward config
       const table =
@@ -61,6 +84,19 @@ export default function AdminProofs() {
       }
 
       const coins = Number(task.reward_coins || 0);
+      // 🔹 GROUP BONUS CHECK
+let bonusCoins = 0;
+
+const { data: groups } = await supabase
+  .from("group_members")
+  .select("group_id")
+  .eq("user_id", p.user_id);
+
+if (groups && groups.length > 0) {
+  bonusCoins = Math.floor(coins * 0.1); // 10% squad bonus
+}
+
+const finalCoins = coins + bonusCoins;
       const rupees = Number(task.reward_rupees || 0);
 
       // 3️⃣ ledger entry
@@ -69,7 +105,7 @@ export default function AdminProofs() {
           user_id: p.user_id,
           source_type: p.task_type,
           source_id: String(p.task_id),
-          points: coins,
+          points: finalCoins,
           weight: p.task_type === "brand" ? 2 : 1,
         });
       }
@@ -81,7 +117,24 @@ export default function AdminProofs() {
           amount: rupees,
         });
       }
-
+await supabase.from("notifications").insert({
+  buyer_id: p.user_id,
+  title: "Task approved 🎉",
+  body: `You earned ${finalCoins} coins${bonusCoins ? " + squad bonus" : ""}`,
+  created_at: new Date().toISOString(),
+});
+      await supabase.from("activity_feed").insert({
+  actor_id: p.user_id,
+  actor_name: "User",
+  action_type: "task_completed",
+  target_type: p.task_type,
+  target_id: String(p.task_id),
+  meta: {
+    coins: finalCoins,
+    bonus: bonusCoins,
+  },
+});
+      
       // 5️⃣ refresh list
       load();
     } finally {
