@@ -31,10 +31,11 @@ export default function LandingPage() {
           lineHeight: 1.2,
         }}
       >
-        Roz aao <br />
-        Participate karo<br />
-        Digital ownership banao.
-      </h1>
+      
+  Come daily <br />
+  Access Digital Content<br />
+  Pay once. Unlock content online.
+</h1>
 
       {/* Explanation */}
       <p
@@ -46,12 +47,18 @@ export default function LandingPage() {
         }}
       >
         Genstrok me skill, course ya investment nahi chahiye.
-        Sirf participate karo, ownership lo aur rewards pao.
+        Sirf participate karo aur digital content access karo.
       </p>
       <p style={{ opacity: 0.8 }}>
-Genstrok is a digital platform offering digital services and creator access.
-Payments are collected only for digital platform features.
-There is no gambling, betting, or guaranteed earnings involved.
+Genstrok is a digital participation and creator-access platform.
+
+Creators upload digital content such as digital files, guides, or access-based content on the platform.
+Users make payments only to access or unlock this digital content within the platform.
+
+Payments are collected strictly for digital services and platform features.
+There are no physical goods, no guaranteed earnings, no gambling, no betting, and no investment involved.
+
+Access on Genstrok means users get the right to view or use digital content inside the platform and does not represent financial ownership or profit-based returns.
 </p>
 
       {/* CTA */}
