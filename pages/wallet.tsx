@@ -432,7 +432,7 @@ useEffect(() => {
       handler: async function (response: any) {
   try {
     // 1. Verify payment on backend
-  await fetch("/api/verify-payment", {
+    const verifyRes = await fetch("/api/verify-payment", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
