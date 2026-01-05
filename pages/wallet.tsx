@@ -5,6 +5,12 @@ import { useRouter } from "next/router";
 import { supabase } from "../lib/supabaseClient";
 import { BRAND } from "../lib/brand";
 import { insertLedgerEntry } from "../lib/ledger";
+declare global {
+  interface Window {
+    Razorpay: any;
+  }
+}
+
 type OwnershipRow = {
   id: string;
   created_at: string;
@@ -96,8 +102,18 @@ export default function WalletPage() {
   const [brandTaskActionId, setBrandTaskActionId] = useState<number | null>(
     null
   );
+  
+useEffect(() => {
+  const script = document.createElement("script");
+  script.src = "https://checkout.razorpay.com/v1/checkout.js";
+  script.async = true;
+  document.body.appendChild(script);
 
-  // initial load
+  return () => {
+    document.body.removeChild(script);
+  };
+}, []);
+    // initial load
   useEffect(() => {
     async function load() {
       setLoading(true);
@@ -413,19 +429,48 @@ export default function WalletPage() {
       notes: {
         user_id: user.id, // 🔥 THIS IS CRITICAL
       },
-      handler: function () {
-        showToast("Payment successful. Wallet updating...");
-      },
+      handler: async function (response: any) {
+  try {
+    // 1. Verify payment on backend
+  await fetch("/api/verify-payment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        razorpay_payment_id: response.razorpay_payment_id,
+        razorpay_order_id: response.razorpay_order_id,
+        razorpay_signature: response.razorpay_signature,
+        amount,
+        user_id: user.id,
+      }),
+    });
+
+    const verifyData = await verifyRes.json();
+
+    if (!verifyData.success) {
+      showToast("Payment verification failed");
+      return;
+    }
+
+    // 2. Update wallet locally
+    setWalletBalance((prev) => prev + amount);
+
+    showToast("Payment successful. Wallet updated.");
+    window.location.reload();
+  } catch (err) {
+    console.error(err);
+    showToast("Payment verification error");
+  }
+},
       theme: { color: "#7c3aed" },
     };
 
     // @ts-ignore
-    const rzp = new window.Razorpay(options);
-    rzp.open();
-  } catch (err) {
-    console.error(err);
-    showToast("Payment failed");
-  }
+    const rzp = new (window as any).Razorpay(options);
+      rzp.open();
+    } catch (err) {
+      console.error(err);
+      showToast("Payment failed");
+    }
 }
   // DEV topup
   async function handleTopup(amount: number) {

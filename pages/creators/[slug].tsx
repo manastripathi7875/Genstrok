@@ -227,6 +227,8 @@ await supabase.from("notifications").insert({
 
   const canEdit =
     !!currentUser && !!creatorId && currentUser.id === creatorId;
+  const isOwner =
+    !!currentUser && !!creatorId && currentUser.id === creatorId;
 
   /* ================= SAVE PROFILE ================= */
 function handleOpenSettings() {
@@ -269,7 +271,9 @@ function handleOpenSettings() {
         {/* profile header */}
         <section className="mb-6 rounded-3xl border border-slate-800 bg-slate-950/90 p-5">
           
-              <div className="flex items-center gap-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex gap-4">
+  <div className="h-12 w-12 rounded-full overflow-hidden bg-slate-800 flex items-center justify-center">
               {profile?.avatar_url ? (
                 <img
                   src={profile.avatar_url}
@@ -289,8 +293,10 @@ function handleOpenSettings() {
                 {stats.trust} • Trust score {stats.trustScore}/100
               </p>
             </div>
+         </div>
+                  <div className="flex flex-col items-end gap-2">
 
-            {/* FOLLOW / EDIT */}
+          {/* FOLLOW / EDIT */}
             {currentUser && creatorId && currentUser.id !== creatorId && (
       <div className="mt-3">
               <button
@@ -305,8 +311,10 @@ function handleOpenSettings() {
               </button>
       <p className="mt-1 text-[10px] text-slate-500">
     💬 Chat & work offers coming soon
-  </p>
-            )
+    </p>
+  </div>
+)}
+            
             {!creatorId && (
   <span className="text-[11px] text-slate-400">
     Unverified profile
@@ -334,7 +342,7 @@ function handleOpenSettings() {
               </button>
             )}
           </div>
-      )}
+    </div>
     
         </section>
 
@@ -365,6 +373,45 @@ function handleOpenSettings() {
               {items.map((item) => (
                 <div
                   key={item.id}
+                  className="relative rounded-2xl overflow-hidden border border-slate-800 bg-slate-950">
+                  {/* OWNER ONLY: EDIT / DELETE */}
+    {isOwner && (
+      <div className="absolute right-2 top-2 z-10 flex gap-2">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            router.push(`/drop/edit/${item.id}`);
+          }}
+          className="rounded-full bg-black/70 px-2 py-1 text-[11px] text-white"
+        >
+          ✏️
+        </button>
+
+        <button
+          onClick={async (e) => {
+            e.stopPropagation();
+            const ok = confirm("Delete this drop?");
+            if (!ok) return;
+
+            await supabase
+              .from("items")
+              .delete()
+              .eq("id", item.id)
+              .eq("creator_id", creatorId);
+
+            setItems((prev) =>
+              prev.filter((i) => i.id !== item.id)
+            );
+          }}
+          className="rounded-full bg-red-600 px-2 py-1 text-[11px] text-white"
+        >
+          🗑️
+        </button>
+      </div>
+    )}
+
+    {/* DROP CARD */}
+    <div
                   onClick={() =>
                     router.push(`/drop/${encodeURIComponent(item.id)}`)
                   }
@@ -383,17 +430,18 @@ function handleOpenSettings() {
                     </p>
                     <p className="mt-1 text-[11px] text-slate-400">
                       ₹{item.price} • Stock {item.stock}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-      </main>
-    </div>
-  );
-}
+            </p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                </main>
+              </div>
+            );
+          }
 
 /* ================= STAT CARD ================= */
 
