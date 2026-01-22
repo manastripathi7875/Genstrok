@@ -452,10 +452,8 @@ useEffect(() => {
     }
 
     // 2. Update wallet locally
-    setWalletBalance((prev) => prev + amount);
 
     showToast("Payment successful. Wallet updated.");
-    window.location.reload();
   } catch (err) {
     console.error(err);
     showToast("Payment verification error");
